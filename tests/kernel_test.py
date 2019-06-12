@@ -6,6 +6,7 @@ import unittest
 import numpy as np
 import json
 
+import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 import uproot
 
@@ -41,10 +42,10 @@ class TestKernels(unittest.TestCase):
     def setUp(self):
         self.use_cuda = use_cuda
         self.NUMPY_LIB, self.ha = choose_backend(use_cuda=self.use_cuda)
-        self.dataset = TestKernels.load_dataset()
+        self.dataset = TestKernels.load_dataset(self.NUMPY_LIB)
 
     @staticmethod
-    def load_dataset():
+    def load_dataset(numpy_lib):
         download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/nanoaod_test.root")
         datastructures = {
             "Muon": [
@@ -109,7 +110,8 @@ class TestKernels(unittest.TestCase):
         except Exception as e:
             dataset.load_root()
             dataset.to_cache()
-    
+        dataset.move_to_device(numpy_lib)
+ 
         return dataset
 
     def time_kernel(self, test_kernel):
