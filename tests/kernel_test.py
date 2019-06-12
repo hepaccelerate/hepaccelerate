@@ -185,6 +185,10 @@ class TestKernels(unittest.TestCase):
         return muons.numevents()
 
     def test_timing(self):
+        for i in range(5):
+            self.run_timing()
+
+    def run_timing(self):
         ds = self.dataset
 
         t0 = time.time()
