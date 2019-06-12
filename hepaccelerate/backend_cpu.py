@@ -12,11 +12,14 @@ def searchsorted_devfunc(arr, val):
             break
     return ret
 
-#need atomics to add to bin contents
-@numba.njit(fastmath=False)
+@numba.njit(fastmath=False, parallel=True)
 def fill_histogram(data, weights, bins, out_w, out_w2):
+    bin_inds = np.zeros(len(data), dtype=np.int32)
+    for i in numba.prange(len(data)):
+        bin_inds[i] = searchsorted_devfunc(bins, data[i]) - 1
+    #cannot parallelize this without atomics
     for i in range(len(data)):
-        bin_idx = searchsorted_devfunc(bins, data[i]) - 1
+        bin_idx = bin_inds[i]
         if bin_idx >=0 and bin_idx < len(out_w):
             out_w[bin_idx] += np.float64(weights[i])
             out_w2[bin_idx] += np.float64(weights[i]**2)

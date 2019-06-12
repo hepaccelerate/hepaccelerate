@@ -93,3 +93,4 @@ ENV/
 #hepaccelerate
 *.mmap
 mycache
+kernel_benchmarks.txt

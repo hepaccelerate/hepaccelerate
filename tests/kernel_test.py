@@ -185,8 +185,10 @@ class TestKernels(unittest.TestCase):
         return muons.numevents()
 
     def test_timing(self):
-        for i in range(5):
-            self.run_timing()
+        with open("kernel_benchmarks.txt", "a") as of:
+            for i in range(5):
+                ret = self.run_timing()
+                of.write(json.dumps(ret) + '\n')
 
     def run_timing(self):
         ds = self.dataset
@@ -197,7 +199,7 @@ class TestKernels(unittest.TestCase):
         t1 = time.time()
         dt = (t1 - t0)/5.0
 
-        ret = {}
+        ret = {"use_cuda": self.use_cuda, "num_threads": numba.config.NUMBA_NUM_THREADS, "use_avx": numba.config.ENABLE_AVX}
         print("Memory transfer speed: {0:.2f} MHz, event size {1:.2f} bytes, data transfer speed {2:.2f} MB/s".format(ds.numevents() / dt / 1000.0 / 1000.0, ds.eventsize(), ds.memsize()/dt/1000/1000))
         ret["memory_transfer"] = ds.numevents() / dt / 1000.0 / 1000.0
 
@@ -225,11 +227,7 @@ class TestKernels(unittest.TestCase):
         print("histogram_from_vector {0:.2f} MHz".format(t/1000/1000))
         ret["histogram_from_vector"] = t/1000/1000
         
-        print(ret)
+        return ret 
 
 if __name__ == "__main__":
     unittest.main()
-    
-    with open("kernel_benchmarks.txt", "a") as of:
-        for i in range(5):  
-            of.write(json.dumps(run_all_tests()) + '\n')
