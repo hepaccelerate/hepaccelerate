@@ -94,3 +94,4 @@ ENV/
 *.mmap
 mycache
 kernel_benchmarks.txt
+*.root

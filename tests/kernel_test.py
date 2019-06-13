@@ -5,6 +5,7 @@ import requests
 import unittest
 import numpy as np
 import json
+import sys
 
 import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
@@ -17,11 +18,16 @@ def download_file(filename, url):
     """
     Download an URL to a file
     """
+    print("downloading {0}".format(url))
     with open(filename, 'wb') as fout:
         response = requests.get(url, stream=True, verify=False)
         response.raise_for_status()
         # Write response data to file
+        iblock = 0
         for block in response.iter_content(4096):
+            if iblock % 1000 == 0:
+                sys.stdout.write(".");sys.stdout.flush()
+            iblock += 1
             fout.write(block)
 
 def download_if_not_exists(filename, url):

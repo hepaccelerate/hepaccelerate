@@ -1,0 +1,21 @@
+language: python
+
+os:
+  - linux
+
+python:
+  - 3.6
+
+addons:
+  apt:
+    packages:
+    - python-setuptools
+
+install:
+  - pip install awkward
+  - pip install uproot
+  - pip install numpy --upgrade
+  - pip install numba
+
+script:
+    - PYTHONPATH=. python setup.py test
