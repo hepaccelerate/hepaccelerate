@@ -157,6 +157,59 @@ class TestKernels(unittest.TestCase):
             sel_mu)
         return muons.numevents()
 
+    def test_kernel_get_in_offsets(self):
+        dataset = self.dataset
+        muons = dataset.structs["Muon"][0]
+        sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
+        sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
+        inds = self.NUMPY_LIB.zeros(muons.numevents(), dtype=self.NUMPY_LIB.int8)
+        inds[:] = 0
+        z = self.ha.get_in_offsets(
+            muons.pt,
+            muons.offsets,
+            inds,
+            sel_ev,
+            sel_mu)
+        return muons.numevents()
+
+    def test_kernel_set_in_offsets(self):
+        dataset = self.dataset
+        muons = dataset.structs["Muon"][0]
+        sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
+        sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
+        inds = self.NUMPY_LIB.zeros(muons.numevents(), dtype=self.NUMPY_LIB.int8)
+        inds[:] = 0
+        target = self.NUMPY_LIB.ones(muons.numevents(), dtype=muons.pt.dtype)
+        self.ha.set_in_offsets(
+            muons.pt,
+            muons.offsets,
+            inds,
+            target,
+            sel_ev,
+            sel_mu)
+
+        z = self.ha.get_in_offsets(
+            muons.pt,
+            muons.offsets,
+            inds,
+            sel_ev,
+            sel_mu)
+        z[:] = target[:]
+        
+        return muons.numevents()
+
+    def test_kernel_max_in_offsets(self):
+        dataset = self.dataset
+        muons = dataset.structs["Muon"][0]
+        sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
+        sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
+        z = self.ha.max_in_offsets(
+            muons,
+            muons.pt,
+            sel_ev,
+            sel_mu)
+        return muons.numevents()
+
     def test_kernel_simple_cut(self):
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
@@ -222,6 +275,10 @@ class TestKernels(unittest.TestCase):
         t = self.time_kernel(self.test_kernel_max_in_offsets)
         print("max_in_offsets {0:.2f} MHz".format(t/1000/1000))
         ret["max_in_offsets"] = t/1000/1000
+
+        t = self.time_kernel(self.test_kernel_get_in_offsets)
+        print("get_in_offsets {0:.2f} MHz".format(t/1000/1000))
+        ret["get_in_offsets"] = t/1000/1000
 
         t = self.time_kernel(self.test_kernel_mask_deltar_first)
         print("mask_deltar_first {0:.2f} MHz".format(t/1000/1000))

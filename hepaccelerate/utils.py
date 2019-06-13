@@ -14,6 +14,15 @@ from numba.typed import Dict
 
 import awkward
 
+"""
+Choose either the CPU(numpy) or GPU/CUDA(cupy) backend.
+
+Args:
+    use_cuda: True if you want to use CUDA, False otherwise
+    verbose: Print messages
+
+Returns: handle to numpy or cupy library, handle to hepaccelerate backend module
+"""
 def choose_backend(use_cuda=False, verbose=False):
     if use_cuda:
         if verbose:
@@ -31,6 +40,10 @@ def choose_backend(use_cuda=False, verbose=False):
         NUMPY_LIB.asnumpy = numpy.array
     return NUMPY_LIB, ha
 
+"""
+Simple one-dimensional histogram from a content array (weighted),
+content array with squared weights and an edge array.
+"""
 class Histogram:
     def __init__(self, contents, contents_w2, edges):
         self.contents = np.array(contents)
@@ -51,6 +64,9 @@ class Histogram:
     def from_dict(d):
         return Histogram(d["contents"], d["contents_w2"], d["edges"])
 
+"""
+Collects multiple jagged arrays together into a logical "struct".
+"""
 class JaggedStruct(object):
     def __init__(self, offsets, attrs_data, prefix, numpy_lib, attr_names_dtypes):
         self.numpy_lib = numpy_lib
@@ -208,6 +224,9 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.__dict__
         return json.JSONEncoder.default(self, obj)
 
+"""
+Dictionary that can be added to others using +
+"""
 class Results(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -235,18 +254,15 @@ class Results(dict):
         with open(outfn, "w") as fi:
             fi.write(json.dumps(dict(self), indent=2, cls=NumpyEncoder))
 
-def progress(count, total, status=''):
-    sys.stdout.write('.')
-    sys.stdout.flush()
-
-
+"""
+Generic uproot dataset
+"""
 class BaseDataset(object):
     def __init__(self, filenames, arrays_to_load, treename):
         self.filenames = filenames
         self.arrays_to_load = arrays_to_load
         self.data_host = []
         self.treename = treename
-        self.do_progress = False
 
     def preload(self, nthreads=1, verbose=False):
         t0 = time.time()
@@ -260,8 +276,6 @@ class BaseDataset(object):
             else:
                 arrs = tt.arrays(self.arrays_to_load)
             self.data_host += [arrs]
-            if self.do_progress:
-                progress(ifn, len(self.filenames))
         t1 = time.time()
         dt = t1 - t0
         if verbose:
@@ -277,6 +291,9 @@ class BaseDataset(object):
     def __len__(self):
         return self.num_events_raw()
 
+"""
+Dataset that supports caching
+"""
 class Dataset(BaseDataset):
     numpy_lib = np
     
@@ -488,8 +505,6 @@ class Dataset(BaseDataset):
             ))
 
     def from_cache_worker(self, ifn):
-        if self.do_progress:
-            progress(ifn, len(self.filenames))
         fn = self.filenames[ifn]
         bfn = os.path.basename(fn).replace(".root", "")
         
@@ -551,8 +566,38 @@ class Dataset(BaseDataset):
             return n_events_raw
 
 ###
-### Ported from fnal-columnar-analysis-tools
-###
+### back-ported from https://github.com/CoffeaTeam/coffea
+### The code below follows the coffea license.
+
+# BSD 3-Clause License
+
+# Copyright (c) 2018, Fermilab
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 class LumiMask(object):
     """
