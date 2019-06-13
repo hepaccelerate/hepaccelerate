@@ -27,9 +27,9 @@ Optional libraries for CUDA acceleration:
  - cudatoolkit
 
 ## Documentation
-This code consists of two parts:
+This code consists of two parts which can be used independently:
   - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](hepaccelerate/backend_cpu.py) and [backend_cuda.py](hepaccelerate/backend_cuda.py)  
-  - JaggedStruct, Dataset and Histogram classes to simplify data management
+  - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
 ## Usage
 
