@@ -5,6 +5,9 @@
 Accelerated array analysis on flat ROOT data. Process 1 billion events to histograms in minutes on a single workstation.
 Weighted histograms, jet-lepton deltaR matching and more! Works on both the CPU and GPU!
 
+![Kernel benchmarks](images/kernel_benchmarks.png)
+![Analysis scaling to 1B events](images/analysis_scaling.png)
+
 ## Installation
 
 ~~~
@@ -20,6 +23,11 @@ Required python libraries:
 Optional libraries for CUDA acceleration:
  - cupy
  - cudatoolkit
+
+## Documentation
+This code consists of two parts:
+  - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](hepaccelerate/backend_cpu.py) and [backend_cuda.py](hepaccelerate/backend_cuda.py)  
+  - JaggedStruct, Dataset and Histogram classes to simplify data management
 
 ## Usage
 
@@ -55,6 +63,7 @@ def analyze_data_function(data, parameters):
 
     mask_events = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
     mask_muons_passing_pt = muons.pt > parameters["muons_ptcut"]
+    #count how many muons per event pass the selection
     num_muons_event = ha.sum_in_offsets(muons, mask_muons_passing_pt, mask_events, muons.masks["all"], NUMPY_LIB.int8)
     mask_events_dimuon = num_muons_event == 2
 
