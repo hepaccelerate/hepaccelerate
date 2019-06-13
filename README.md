@@ -23,11 +23,14 @@ Optional libraries for CUDA acceleration:
 
 ## Usage
 
-This is a minimal example from [tests/example.py](tests/example.py).
+This is a minimal example from [tests/example.py](tests/example.py), which can be run from this repository using
+~~~
+python3 tests/example.py
+~~~
 
 ```python
 #usr/bin/env python3
-#Run as PYTHONPATH=. python3 tests/example.py
+#Run as `python3 tests/example.py`
 
 #In case you use CUDA, you may have to find the libnvvm.so on your system manually
 import os
