@@ -1,33 +1,12 @@
-[![Build Status](https://travis-ci.com/jpata/hepaccelerate.svg?branch=master)](https://travis-ci.com/jpata/hepaccelerate)
-[![pipeline status](https://gitlab.cern.ch/jpata/hepaccelerate/badges/libhmm/pipeline.svg)](https://gitlab.cern.ch/jpata/hepaccelerate/commits/libhmm)
+#usr/bin/env python3
+#Run as PYTHONPATH=. python3 tests/example.py
 
-# hepaccelerate
+#In case you use CUDA, you may have to find the libnvvm.so on your system manually
+import os
+os.environ["NUMBAPRO_NVVM"] = "/usr/local/cuda/nvvm/lib64/libnvvm.so"
+os.environ["NUMBAPRO_LIBDEVICE"] = "/usr/local/cuda/nvvm/libdevice/"
+import numba
 
-Accelerated array analysis on flat ROOT data. Process 1 billion events to histograms in minutes on a single workstation.
-Weighted histograms, jet-lepton deltaR matching and more! Works on both the CPU and GPU!
-
-## Installation
-
-~~~
-pip install git+https://github.com/jpata/hepaccelerate@v0.1.0
-~~~
-
-Required python libraries:
- - python 3
- - uproot
- - awkward-array
- - numba (>0.43)
-
-Optional libraries for CUDA acceleration:
- - cupy
- - cudatoolkit
-
-## Usage
-
-This is a minimal example from [tests/example.py](tests/example.py).
-
-```python
-#!/usr/bin/env python3
 import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 
@@ -70,7 +49,7 @@ datastructures = {
             "Muon": [
                 ("Muon_Px", "float32"),
                 ("Muon_Py", "float32"),
-                ("Muon_Pz", "float32"),
+                ("Muon_Pz", "float32"), 
                 ("Muon_E", "float32"),
                 ("Muon_Charge", "int32"),
                 ("Muon_Iso", "float32")
@@ -94,7 +73,7 @@ dataset = Dataset("HZZ", [filename], datastructures, cache_location="./mycache/"
 
 #load data to memory
 try:
-    dataset.from_cache()
+    dataset.from_cache(verbose=True)
     print("Loaded data from cache, did not touch original ROOT files.")
 except FileNotFoundError as e:
     print("Cache not found, creating...")
@@ -104,4 +83,3 @@ except FileNotFoundError as e:
 #process data
 results = dataset.analyze(analyze_data_function, verbose=True, parameters={"muons_ptcut": 30.0})
 results.save_json("out.json")
-```

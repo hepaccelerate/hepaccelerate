@@ -95,3 +95,4 @@ ENV/
 mycache
 kernel_benchmarks.txt
 *.root
+*.json
