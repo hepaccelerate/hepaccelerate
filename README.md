@@ -5,8 +5,14 @@
 Accelerated array analysis on flat ROOT data. Process 1 billion events to histograms in minutes on a single workstation.
 Weighted histograms, jet-lepton deltaR matching and more! Works on both the CPU and GPU!
 
-<img src="images/kernel_benchmarks.png" alt="Kernel benchmarks" width="200"/>
-<img src="images/analysis_scaling.png" alt="Analysis scaling" width="200"/>
+<div class="row">
+  <div class="column">
+  <img src="images/kernel_benchmarks.png" alt="Kernel benchmarks" width="300"/>
+  </div>
+  <div class="column">
+  <img src="images/analysis_scaling.png" alt="Analysis scaling" width="300"/>
+  </div>
+</div/
 
 ## Installation
 
