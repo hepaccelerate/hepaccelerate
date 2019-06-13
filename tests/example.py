@@ -69,7 +69,7 @@ datastructures = {
             ]
     }
 
-dataset = Dataset("HZZ", [filename], datastructures, cache_location="./mycache/", treename="events", datapath="")
+dataset = Dataset("HZZ", [filename], datastructures, cache_location="./mycache/", treename="events")
 
 #load data to memory
 try:
