@@ -10,46 +10,163 @@ except ImportError as e:
 import math
 import numpy as np
 
+#Copied from numba source
 @cuda.jit(device=True)
-def searchsorted_devfunc(arr, val):
-    ret = -1
+def searchsorted_inner_right(a, v):
+    n = len(a)
+    lo = np.int32(0)
+    hi = np.int32(n)
+    while hi > lo:
+        mid = (lo + hi) >> 1
+        if a[mid] <= (v):
+            # mid is too low => go up
+            lo = mid + 1
+        else:
+            # mid is too high, or is a NaN => go down
+            hi = mid
+    return lo
 
-    #overflow
-    if val > arr[-1]:
-        return len(arr)
+#Copied from numba source
+@cuda.jit(device=True)
+def searchsorted_inner_left(a, v):
+    n = len(a)
+    lo = np.int32(0)
+    hi = np.int32(n)
+    while hi > lo:
+        mid = (lo + hi) >> 1
+        if a[mid] < (v):
+            # mid is too low => go up
+            lo = mid + 1
+        else:
+            # mid is too high, or is a NaN => go down
+            hi = mid
+    return lo
 
-    for i in range(len(arr)):
-        if val <= arr[i]:
-            ret = i
-            break
+@cuda.jit(device=True)
+def searchsorted_devfunc_right(bins, val):
+
+    ret = searchsorted_inner_right(bins, val)
+    
+    if val < bins[0]:
+        ret = 0
+    if val >= bins[len(bins)-1]:
+        ret = len(bins) - 1
+    return ret
+
+@cuda.jit(device=True)
+def searchsorted_devfunc_left(bins, val):
+
+    ret = searchsorted_inner_left(bins, val)
+    if val < bins[0]:
+        return 0
+    if val >= bins[len(bins)-1]:
+        return len(bins) - 1
     return ret
 
 @cuda.jit
-def searchsorted_kernel(vals, arr, inds_out):
+def searchsorted_kernel_right(vals, arr, inds_out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
+    assert(len(vals) == len(inds_out))
     
     for i in range(xi, len(vals), xstride):
-        inds_out[i] = searchsorted_devfunc(arr, vals[i])
+        inds_out[i] = searchsorted_devfunc_right(arr, vals[i])
 
-def searchsorted(arr, vals):
+@cuda.jit
+def searchsorted_kernel_left(vals, arr, inds_out):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    assert(len(vals) == len(inds_out))
+    
+    for i in range(xi, len(vals), xstride):
+        inds_out[i] = searchsorted_devfunc_left(arr, vals[i])
+
+def searchsorted(arr, vals, side="right"):
     """
     Find indices to insert vals into arr to preserve order.
     """
     ret = cupy.zeros_like(vals, dtype=cupy.int32)
-    searchsorted_kernel[32, 1024](vals, arr, ret)
+    if side == "right":
+        searchsorted_kernel_right[32, 1024](vals, arr, ret)
+    elif side == "left":
+        searchsorted_kernel_left[32, 1024](vals, ret, arr)
+    cuda.synchronize()
     return ret 
+
+@cuda.jit
+def fill_histogram_several(data, weights, mask, bins, nbins, nbins_sum, out_w, out_w2):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    
+    bi = cuda.blockIdx.x
+    bd = cuda.blockDim.x
+    ti = cuda.threadIdx.x
+  
+    #number of histograms to fill 
+    ndatavec = data.shape[0]
+ 
+    for iev in range(xi, data.shape[1], xstride):
+        if mask[iev]:
+            for ivec in range(ndatavec):
+                bin_idx = np.int32(
+                    searchsorted_devfunc_right(
+                        bins[nbins_sum[ivec]:nbins_sum[ivec+1]],
+                        data[ivec, iev]
+                    ) - 1
+                )
+                if bin_idx >= nbins[ivec]:
+                    bin_idx = nbins[ivec] - 1
+                bin_idx_histo = (ivec, bi, bin_idx)
+            
+                if bin_idx >=0 and bin_idx < nbins[ivec]:
+                    wi = weights[iev]
+                    cuda.atomic.add(out_w, bin_idx_histo, wi)
+                    cuda.atomic.add(out_w2, bin_idx_histo, wi**2)
 
 @cuda.jit
 def fill_histogram(data, weights, bins, out_w, out_w2):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
+   
+    bi = cuda.blockIdx.x
+    bd = cuda.blockDim.x
+    ti = cuda.threadIdx.x
+
+    nbins = out_w.shape[1]
     
     for i in range(xi, len(data), xstride):
-        bin_idx = searchsorted_devfunc(bins, data[i]) - 1
-        if bin_idx >=0 and bin_idx < len(out_w):
-            cuda.atomic.add(out_w, bin_idx, weights[i])
-            cuda.atomic.add(out_w2, bin_idx, weights[i]**2)
+        bin_idx = searchsorted_devfunc_right(bins, data[i]) - 1
+        if bin_idx >= nbins:
+            bin_idx = nbins - 1
+        bin_idx_histo = (bi, bin_idx)
+
+        if bin_idx >=0 and bin_idx < nbins:
+            wi = weights[i]
+            cuda.atomic.add(out_w, bin_idx_histo, wi)
+            cuda.atomic.add(out_w2, bin_idx_histo, wi**2)
+
+@cuda.jit
+def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+   
+    bi = cuda.blockIdx.x
+    bd = cuda.blockDim.x
+    ti = cuda.threadIdx.x
+
+    nbins = out_w.shape[1]
+    
+    for i in range(xi, len(data), xstride):
+        if mask[i]:
+            bin_idx = searchsorted_devfunc_right(bins, data[i]) - 1
+            if bin_idx >= nbins:
+                bin_idx = nbins - 1
+            bin_idx_histo = (bi, bin_idx)
+
+            if bin_idx >=0 and bin_idx < nbins:
+                wi = weights[i]
+                cuda.atomic.add(out_w, bin_idx_histo, wi)
+                cuda.atomic.add(out_w2, bin_idx_histo, wi**2)
 
 @cuda.jit
 def select_opposite_sign_muons_cudakernel(muon_charges_content, muon_charges_offsets, content_mask_in, content_mask_out):
@@ -181,7 +298,22 @@ def set_in_offsets_cudakernel(content, offsets, indices, target, mask_rows, mask
                     break
                 else:
                     index_to_set += 1
-        
+
+@cuda.jit
+def broadcast_cudakernel(content, offsets, out):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+
+    for iev in range(xi, offsets.shape[0]-1, xstride):
+        start = offsets[iev]
+        end = offsets[iev + 1]
+        for ielem in range(start, end):
+            out[ielem] = content[iev]
+
+def broadcast(content, offsets, out):
+    broadcast_cudakernel[32,1024](content, offsets, out)
+    cuda.synchronize()
+
 def sum_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
     if not dtype:
         dtype = content.dtype
@@ -209,12 +341,19 @@ def select_muons_opposite_sign(muons, in_mask):
     return out_mask
 
 def get_in_offsets(content, offsets, indices, mask_rows, mask_content):
+    assert(content.shape == mask_content.shape)
+    assert(offsets.shape[0] - 1 == indices.shape[0])
+    assert(offsets.shape[0] - 1 == mask_rows.shape[0])
     out = cupy.zeros(len(offsets) - 1, dtype=content.dtype)
     get_in_offsets_cudakernel[32, 1024](content, offsets, indices, mask_rows, mask_content, out)
     cuda.synchronize()
     return out
 
 def set_in_offsets(content, offsets, indices, target, mask_rows, mask_content):
+    assert(content.shape == mask_content.shape)
+    assert(offsets.shape[0]-1 == indices.shape[0])
+    assert(offsets.shape[0]-1 == target.shape[0])
+    assert(offsets.shape[0]-1 == mask_rows.shape[0])
     set_in_offsets_cudakernel[32, 1024](content, offsets, indices, target, mask_rows, mask_content)
     cuda.synchronize()
 
@@ -283,14 +422,34 @@ def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
     mask_out = cupy.invert(mask_out)
     return mask_out
 
-def histogram_from_vector(data, weights, bins):
+def histogram_from_vector(data, weights, bins, mask=None):
     assert(len(data) == len(weights))
-    out_w = cupy.zeros(len(bins) - 1, dtype=cupy.float32)
-    out_w2 = cupy.zeros(len(bins) - 1, dtype=cupy.float32)
-    if len(data) > 0:
-        fill_histogram[32, 1024](data, weights, bins, out_w, out_w2)
-    return cupy.asnumpy(out_w), cupy.asnumpy(out_w2), cupy.asnumpy(bins)
 
+    allowed_dtypes =[cupy.float32, cupy.int32, cupy.int8] 
+    assert(data.dtype in allowed_dtypes)
+    assert(weights.dtype in allowed_dtypes)
+    assert(bins.dtype in allowed_dtypes)
+   
+    #Allocate output arrays 
+    nblocks = 64
+    nthreads = 256
+    out_w = cupy.zeros((nblocks, len(bins) - 1), dtype=cupy.float32)
+    out_w2 = cupy.zeros((nblocks, len(bins) - 1), dtype=cupy.float32)
+
+    #Fill output
+    if len(data) > 0:
+        if mask is None:
+            fill_histogram[nblocks, nthreads](data, weights, bins, out_w, out_w2)
+        else:
+            assert(len(data) == len(mask)) 
+            fill_histogram_masked[nblocks, nthreads](data, weights, bins, mask, out_w, out_w2)
+
+    cuda.synchronize()
+
+    out_w = out_w.sum(axis=0)
+    out_w2 = out_w2.sum(axis=0)
+
+    return cupy.asnumpy(out_w), cupy.asnumpy(out_w2), cupy.asnumpy(bins)
 
 @cuda.jit
 def get_bin_contents_cudakernel(values, edges, contents, out):
@@ -298,7 +457,7 @@ def get_bin_contents_cudakernel(values, edges, contents, out):
     xstride = cuda.gridsize(1)
     for i in range(xi, len(values), xstride):
         v = values[i]
-        ibin = searchsorted_devfunc(edges, v)
+        ibin = searchsorted_devfunc_right(edges, v)
         if ibin>=0 and ibin < len(contents):
             out[i] = contents[ibin]
 
@@ -306,3 +465,42 @@ def get_bin_contents(values, edges, contents, out):
     assert(values.shape == out.shape)
     assert(edges.shape[0] == contents.shape[0]+1)
     get_bin_contents_cudakernel[32, 1024](values, edges, contents, out)
+
+@cuda.jit
+def copyto_dst_indices_cudakernel(dst, src, inds_dst):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    for i1 in range(xi, len(src), xstride):
+        i2 = inds_dst[i1] 
+        dst[i2] = src[i1]
+
+def copyto_dst_indices(dst, src, inds_dst):
+    assert(len(inds_dst) == len(src))
+    copyto_dst_indices_cudakernel[32, 1024](dst, src, inds_dst)
+    cuda.synchronize()
+
+@cuda.jit
+def compute_new_offsets_cudakernel(offsets_old, mask_objects, counts, offsets_new):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+
+    for iev in range(xi, len(offsets_old)-1, xstride):
+        start = offsets_old[iev]
+        end = offsets_old[iev + 1]
+        ret = 0
+        for ielem in range(start, end):
+            if mask_objects[ielem]:
+                ret += 1
+            counts[iev] = ret
+
+    count_tot = 0
+    for iev in range(len(counts)):
+        offsets_new[iev] = count_tot
+        offsets_new[iev+1] = count_tot + counts[iev]
+        count_tot += counts[iev] 
+
+def compute_new_offsets(offsets_old, mask_objects, offsets_new):
+    assert(len(offsets_old) == len(offsets_new))
+    counts = cupy.zeros(len(offsets_old)-1, dtype=np.int32)
+    compute_new_offsets_cudakernel[32,1024](offsets_old, mask_objects, counts, offsets_new)
+    cuda.synchronize()

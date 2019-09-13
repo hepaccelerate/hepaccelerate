@@ -9,21 +9,83 @@ We use this function, rather than np.searchsorted to have a similar implementati
 between the CPU and GPU backends.
 
 Args:
-    arr: sorted data array
+    bins: sorted data array
     val: value to find in array
 
 Returns:
     index of first value in array that is equal or larger than val,
-    len(arr) otherwise
+    len(bins) otherwise
 """
 @numba.njit(fastmath=True)
-def searchsorted_devfunc(arr, val):
-    ret = len(arr)
-    for i in range(len(arr)):
-        if val <= arr[i]:
-            ret = i
-            break
+def searchsorted_devfunc_right(bins, val):
+    if val < bins[0]:
+        return 0
+    if val >= bins[-1]:
+        return len(bins) - 1
+
+    ret = np.searchsorted(bins, val, side="right")
+
     return ret
+
+@numba.njit(fastmath=True)
+def searchsorted_devfunc_left(bins, val):
+    if val < bins[0]:
+        return 0
+    if val >= bins[-1]:
+        return len(bins) - 1
+
+    ret = np.searchsorted(bins, val, side="left")
+
+    return ret
+
+@numba.njit(parallel=True, fastmath=True)
+def searchsorted_right(vals, bins, inds_out):
+    for i in numba.prange(len(vals)):
+        inds_out[i] = searchsorted_devfunc_right(bins, vals[i])
+
+@numba.njit(parallel=True, fastmath=True)
+def searchsorted_left(vals, bins, inds_out):
+    for i in numba.prange(len(vals)):
+        inds_out[i] = searchsorted_devfunc_left(bins, vals[i])
+
+def searchsorted(bins, vals, side):
+    out = np.zeros(len(vals), dtype=np.int32)
+    if side == "left":
+        searchsorted_left(vals, bins, out)
+    else:
+        searchsorted_right(vals, bins, out)
+    return out
+
+
+@numba.njit(fastmath=True, parallel=True)
+def fill_histogram_several(data, weights, mask, bins, nbins, nbins_sum, out_w, out_w2):
+  
+    #number of histograms to fill 
+    ndatavec = data.shape[0]
+ 
+    bin_inds = np.zeros((ndatavec, data.shape[1]), dtype=np.int32)
+    for iev in numba.prange(data.shape[1]):
+        if mask[iev]:
+            for ivec in range(ndatavec):
+                bin_idx = np.int32(
+                    searchsorted_devfunc_right(
+                        bins[nbins_sum[ivec]:nbins_sum[ivec+1]],
+                        data[ivec, iev]
+                    ) - 1
+                )
+                if bin_idx >= nbins[ivec]:
+                    bin_idx = nbins[ivec] - 1
+                bin_inds[ivec, iev] = bin_idx
+
+    for iev in range(data.shape[1]):
+        if mask[iev]:
+            for ivec in range(ndatavec):
+                bin_idx = bin_inds[ivec, iev]
+
+                if bin_idx >=0 and bin_idx < nbins[ivec]:
+                    wi = weights[iev]
+                    out_w[ivec, bin_idx] += np.float32(wi)
+                    out_w2[ivec, bin_idx] += np.float32(wi**2)
 
 """Given a data array and weights array, fills a 1D histogram with the weights.
 
@@ -34,23 +96,62 @@ Args:
     out_w: output histogram, filled with weights
     out_w2: output histogram, filled with squared weights for error propagation
 """
-@numba.njit(fastmath=False, parallel=True)
+@numba.njit(fastmath=True, parallel=True)
 def fill_histogram(data, weights, bins, out_w, out_w2):
     assert(len(data) == len(weights))
     assert(len(out_w) == len(out_w2))
     assert(len(bins) - 1 == len(out_w))
 
+    nbins = out_w.shape[0]
+
     #find the indices of the bins into which every data element would fall
     bin_inds = np.zeros(len(data), dtype=np.int32)
     for i in numba.prange(len(data)):
-        bin_inds[i] = searchsorted_devfunc(bins, data[i]) - 1
+        bin_idx = searchsorted_devfunc_right(bins, data[i]) - 1
+        if bin_idx >= nbins:
+            bin_idx = nbins - 1
+        bin_inds[i] = bin_idx
 
     #fill the outputs, cannot parallelize this without atomics
     for i in range(len(data)):
         bin_idx = bin_inds[i]
+        wi = weights[i]
+
         if bin_idx >=0 and bin_idx < len(out_w):
-            out_w[bin_idx] += np.float64(weights[i])
-            out_w2[bin_idx] += np.float64(weights[i]**2)
+            out_w[bin_idx] += np.float32(wi)
+            out_w2[bin_idx] += np.float32(wi**2)
+
+@numba.njit(fastmath=True, parallel=True)
+def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
+    assert(len(data) == len(weights))
+    assert(len(out_w) == len(out_w2))
+    assert(len(bins) - 1 == len(out_w))
+
+    nbins = out_w.shape[0]
+
+    #find the indices of the bins into which every data element would fall
+    bin_inds = np.zeros(len(data), dtype=np.int32)
+    for i in numba.prange(len(data)):
+        bin_idx = searchsorted_devfunc_right(bins, data[i]) - 1
+        if bin_idx >= nbins:
+            bin_idx = nbins - 1
+        bin_inds[i] = bin_idx
+
+
+    #fill the outputs, cannot parallelize this without atomics
+    for i in range(len(data)):
+        if not mask[i]:
+            continue
+
+        bin_idx = bin_inds[i]
+        wi = weights[i]
+
+        if bin_idx >= nbins:
+            bin_idx = nbins - 1
+
+        if bin_idx >=0 and bin_idx < len(out_w):
+            out_w[bin_idx] += np.float32(wi)
+            out_w2[bin_idx] += np.float32(wi**2)
 
 """Given a vector of muon charges and event offsets, masks the first two opposite sign muons.
 
@@ -246,6 +347,14 @@ def set_in_offsets_kernel(content, offsets, indices, target, mask_rows, mask_con
                 else:
                     index_to_set += 1
 
+@numba.njit(parallel=True, fastmath=True)
+def broadcast(content, offsets, out):
+    for iev in numba.prange(offsets.shape[0]-1):
+        start = offsets[iev]
+        end = offsets[iev + 1]
+        for ielem in range(start, end):
+            out[ielem] = content[iev]
+ 
 """ For all events (N), mask the objects in the first collection (M1)
   if closer than dr2 to any object in the second collection (M2).
 
@@ -290,6 +399,13 @@ def mask_deltar_first_kernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2,
                 
                 passdr = ((deta**2 + dphi**2) < dr2)
                 mask_out[idx1] = mask_out[idx1] | passdr
+
+@numba.njit(parallel=True)
+def copyto_dst_indices(dst, src, inds_dst):
+    assert(len(inds_dst) == len(src))
+    for i1 in numba.prange(len(src)):
+        i2 = inds_dst[i1] 
+        dst[i2] = src[i1]
 
 #User-friendly functions that call the kernels, but create the output arrays themselves
 
@@ -337,18 +453,47 @@ def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
     mask_out = np.invert(mask_out)
     return mask_out
 
-def histogram_from_vector(data, weights, bins):        
+def histogram_from_vector_several(variables, weights, mask):
+    all_arrays = []
+    all_bins = []
+    num_histograms = len(variables)
+
+    for array, bins in variables:
+        all_arrays += [array]
+        all_bins += [bins]
+
+    max_bins = max([b.shape[0] for b in all_bins])
+    stacked_array = np.stack(all_arrays, axis=0)
+    stacked_bins = np.concatenate(all_bins)
+    nbins = np.array([len(b) for b in all_bins])
+    nbins_sum = np.cumsum(nbins)
+    nbins_sum = np.insert(nbins_sum, 0, [0])
+    
+    out_w = np.zeros((len(variables), max_bins), dtype=np.float32)
+    out_w2 = np.zeros((len(variables), max_bins), dtype=np.float32)
+    fill_histogram_several(
+        stacked_array, weights, mask, stacked_bins,
+        nbins, nbins_sum, out_w, out_w2
+    )
+    out_w_separated = [out_w[i, 0:nbins[i]-1] for i in range(num_histograms)]
+    out_w2_separated = [out_w2[i, 0:nbins[i]-1] for i in range(num_histograms)]
+    return out_w_separated, out_w2_separated, all_bins
+
+def histogram_from_vector(data, weights, bins, mask=None):
     assert(len(data) == len(weights))
     out_w = np.zeros(len(bins) - 1, dtype=np.float64)
     out_w2 = np.zeros(len(bins) - 1, dtype=np.float64)
-    fill_histogram(data, weights, bins, out_w, out_w2)
+    if mask is None:
+        fill_histogram(data, weights, bins, out_w, out_w2) 
+    else:
+        fill_histogram_masked(data, weights, bins, mask, out_w, out_w2) 
     return out_w, out_w2, bins
     
 @numba.njit(parallel=True, fastmath=True)
 def get_bin_contents_kernel(values, edges, contents, out):
     for i in numba.prange(len(values)):
         v = values[i]
-        ibin = searchsorted_devfunc(edges, v)
+        ibin = searchsorted_devfunc_right(edges, v)
         if ibin>=0 and ibin < len(contents):
             out[i] = contents[ibin]
 
@@ -366,6 +511,23 @@ def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
 
         if run in masks:
             lumimask = masks[run]
-            ind = searchsorted_devfunc(lumimask, lumi)
+            ind = searchsorted_devfunc_right(lumimask, lumi)
             if np.mod(ind, 2) == 1:
                 mask_out[iev] = 1
+
+@numba.njit(parallel=True, fastmath=True)
+def compute_new_offsets(offsets_old, mask_objects, offsets_new):
+    counts = np.zeros(len(offsets_old)-1, dtype=np.int64)
+    for iev in numba.prange(len(offsets_old)-1):
+        start = offsets_old[iev]
+        end = offsets_old[iev + 1]
+        ret = 0
+        for ielem in range(start, end):
+            if mask_objects[ielem]:
+                ret += 1
+            counts[iev] = ret
+    count_tot = 0
+    for iev in range(len(counts)):
+        offsets_new[iev] = count_tot
+        offsets_new[iev+1] = count_tot + counts[iev]
+        count_tot += counts[iev] 

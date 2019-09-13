@@ -96,3 +96,5 @@ mycache
 kernel_benchmarks.txt
 *.root
 *.json
+
+*.swp
