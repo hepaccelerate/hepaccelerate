@@ -1,17 +1,24 @@
 stages:
+  - inputs
   - tests_cpu
   - tests_gpu
 
 #image used to run code
 variables:
   singularity_image: /storage/user/jpata/cupy2.simg
+  input_data_cache: /storage/user/jpata/ci_cache
+
+copy_nanoaod:
+  stage: inputs
+  script:
+    - cp ${input_data_cache}/nanoaod_test.root ./
 
 tests_cpu:
   stage: tests_cpu
   script:
-    - HEPACCELERATE_CUDA=0 singularity exec ${singularity_image} python3 setup.py test
+    - HEPACCELERATE_CUDA=0 singularity --nv exec ${singularity_image} python3 setup.py test
 
 tests_cuda:
   stage: tests_gpu
   script:
-    - HEPACCELERATE_CUDA=1 singularity exec ${singularity_image} python3 setup.py test
+    - HEPACCELERATE_CUDA=1 singularity --nv exec ${singularity_image} python3 setup.py test
