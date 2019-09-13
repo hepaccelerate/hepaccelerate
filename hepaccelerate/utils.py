@@ -134,7 +134,7 @@ class JaggedStruct(object):
         k0 = ks[0]
         return JaggedStruct(
             numpy_lib.array(arraydict[k0].offsets),
-            {str(k, 'ascii').replace(prefix, ""): numpy_lib.array(v.content)
+            {k.replace(prefix, ""): numpy_lib.array(v.content)
              for (k,v) in arraydict.items()},
             prefix, numpy_lib, attr_names_dtypes
         )
@@ -504,13 +504,20 @@ class Dataset(BaseDataset):
 
         #Loop over the loaded data for each file
         for arrs in self.data_host:
-            selected_array_names = []
+            #convert keys to ascii from bytestring
+            arrs = {str(k, 'ascii'): v for k, v in arrs.items()}
 
+            selected_array_names = []
             #here we collect all arrays from the dict of loaded arrays that start with 'prefix_'.
-            for arrname in arrs.keys():
-                arrname_ = str(arrname, 'ascii')
-                if arrname_.startswith(prefix + "_"):
-                    selected_array_names += [arrname]
+            for arrname, dtype in self.structs_dtypes[prefix]:
+                if not (arrname in arrs.keys()):
+                    raise Exception("Could not find array {0} for collection {1} in loaded arrays {2}".format(
+                        arrname, prefix, arrs.keys()
+                    ))
+                selected_array_names += [arrname]
+
+            if len(selected_array_names) == 0:
+                raise Exception("Could not find any arrays matching with {0}_: {1}".format(prefix, arrs.keys()))
 
             #check that all shapes match, otherwise there was a naming convention error
             arrs_selected = [arrs[n] for n in selected_array_names]
