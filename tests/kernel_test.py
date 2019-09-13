@@ -11,9 +11,6 @@ import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 import uproot
 
-
-
-use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
 def download_file(filename, url):
     """
     Download an URL to a file
@@ -46,12 +43,14 @@ def download_if_not_exists(filename, url):
 
 class TestKernels(unittest.TestCase):
     def setUp(self):
+        self.dataset = dataset
+        self.NUMPY_LIB = NUMPY_LIB
+        self.ha = ha
         self.use_cuda = use_cuda
-        self.NUMPY_LIB, self.ha = choose_backend(use_cuda=self.use_cuda)
-        self.dataset = TestKernels.load_dataset(self.NUMPY_LIB)
 
     @staticmethod
     def load_dataset(numpy_lib):
+        print("loading dataset")
         download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/nanoaod_test.root")
         datastructures = {
             "Muon": [
@@ -116,6 +115,10 @@ class TestKernels(unittest.TestCase):
         except Exception as e:
             dataset.load_root()
             dataset.to_cache()
+        print("merging dataset")
+        dataset.merge_inplace()
+        print("dataset has {0} events, {1:.2f} MB".format(dataset.numevents(), dataset.memsize()/1000/1000))
+        print("moving to device")
         dataset.move_to_device(numpy_lib)
  
         return dataset
@@ -242,7 +245,7 @@ class TestKernels(unittest.TestCase):
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         weights = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
-        self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100))
+        self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32))
         return muons.numevents()
 
     def test_timing(self):
@@ -254,14 +257,21 @@ class TestKernels(unittest.TestCase):
     def run_timing(self):
         ds = self.dataset
 
+        print("Testing memory transfer speed")
         t0 = time.time()
         for i in range(5):
             ds.move_to_device(self.NUMPY_LIB)
         t1 = time.time()
         dt = (t1 - t0)/5.0
 
-        ret = {"use_cuda": self.use_cuda, "num_threads": numba.config.NUMBA_NUM_THREADS, "use_avx": numba.config.ENABLE_AVX}
-        print("Memory transfer speed: {0:.2f} MHz, event size {1:.2f} bytes, data transfer speed {2:.2f} MB/s".format(ds.numevents() / dt / 1000.0 / 1000.0, ds.eventsize(), ds.memsize()/dt/1000/1000))
+        ret = {
+            "use_cuda": self.use_cuda, "num_threads": numba.config.NUMBA_NUM_THREADS,
+            "use_avx": numba.config.ENABLE_AVX, "num_events": ds.numevents(),
+            "memsize": ds.memsize()
+        }
+
+        print("Memory transfer speed: {0:.2f} MHz, event size {1:.2f} bytes, data transfer speed {2:.2f} MB/s".format(
+            ds.numevents() / dt / 1000.0 / 1000.0, ds.eventsize(), ds.memsize()/dt/1000/1000))
         ret["memory_transfer"] = ds.numevents() / dt / 1000.0 / 1000.0
 
         t = self.time_kernel(self.test_kernel_sum_in_offsets)
@@ -293,6 +303,10 @@ class TestKernels(unittest.TestCase):
         ret["histogram_from_vector"] = t/1000/1000
         
         return ret 
+    
+use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
+NUMPY_LIB, ha = choose_backend(use_cuda=use_cuda)
+dataset = TestKernels.load_dataset(NUMPY_LIB)
 
 if __name__ == "__main__":
     unittest.main()
