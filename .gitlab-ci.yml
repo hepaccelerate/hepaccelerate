@@ -9,9 +9,9 @@ variables:
 tests_cpu:
   stage: tests_cpu
   script:
-    - HEPACCELERATE_CUDA=0 singularity exec ${singularity_image} python3 setup.py tests
+    - HEPACCELERATE_CUDA=0 singularity exec ${singularity_image} python3 setup.py test
 
 tests_cuda:
   stage: tests_gpu
   script:
-    - HEPACCELERATE_CUDA=1 singularity exec ${singularity_image} python3 setup.py tests
+    - HEPACCELERATE_CUDA=1 singularity exec ${singularity_image} python3 setup.py test
