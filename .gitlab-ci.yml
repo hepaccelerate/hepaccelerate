@@ -19,4 +19,4 @@ tests_cuda:
   allow_failure: true
   script:
     - cp ${input_data_cache}/nanoaod_test.root ./data/nanoaod_test.root
-    - HEPACCELERATE_CUDA=1 singularity exec --nv ${singularity_image} python3 setup.py test
+    - HEPACCELERATE_CUDA=1 CUDA_VISIBLE_DEVICES=`./tests/free_gpu.sh` singularity exec --nv ${singularity_image} python3 setup.py test
