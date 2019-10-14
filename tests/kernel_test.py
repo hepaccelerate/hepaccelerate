@@ -11,6 +11,8 @@ import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 import uproot
 
+USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
+    
 def download_file(filename, url):
     """
     Download an URL to a file
@@ -42,73 +44,56 @@ def download_if_not_exists(filename, url):
     return False
 
 class TestKernels(unittest.TestCase):
+    NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)
+    use_cuda = USE_CUDA
+    
     def setUp(self):
         self.dataset = dataset
-        self.NUMPY_LIB = NUMPY_LIB
-        self.ha = ha
-        self.use_cuda = use_cuda
 
     @staticmethod
     def load_dataset(numpy_lib):
         print("loading dataset")
-        download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/nanoaod_test.root")
+        download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root")
         datastructures = {
             "Muon": [
-                ("Muon_pt", "float32"), ("Muon_eta", "float32"),
-                ("Muon_phi", "float32"), ("Muon_mass", "float32"),
-                ("Muon_pdgId", "int32"),
-                ("Muon_pfRelIso04_all", "float32"), ("Muon_mediumId", "bool"),
-                ("Muon_tightId", "bool"), ("Muon_charge", "int32"),
-                ("Muon_isGlobal", "bool"), ("Muon_isTracker", "bool"),
-                ("Muon_nTrackerLayers", "int32"),
+                ("Muon_pt", "float32"),
+                ("Muon_eta", "float32"),
+                ("Muon_phi", "float32"),
+                ("Muon_mass", "float32"),
+                ("Muon_charge", "int32"),
+                ("Muon_pfRelIso03_all", "float32"),
+                ("Muon_tightId", "bool")
             ],
             "Electron": [
-                ("Electron_pt", "float32"), ("Electron_eta", "float32"),
-                ("Electron_phi", "float32"), ("Electron_mass", "float32"),
-                ("Electron_mvaFall17V1Iso_WP90", "bool"),
+                ("Electron_pt", "float32"),
+                ("Electron_eta", "float32"),
+                ("Electron_phi", "float32"),
+                ("Electron_mass", "float32"),
+                ("Electron_charge", "int32"),
+                ("Electron_pfRelIso03_all", "float32"),
+                ("Electron_pfId", "bool")
             ],
             "Jet": [
-                ("Jet_pt", "float32"), ("Jet_eta", "float32"),
-                ("Jet_phi", "float32"), ("Jet_mass", "float32"),
-                ("Jet_btagDeepB", "float32"),
-                ("Jet_jetId", "int32"), ("Jet_puId", "int32"),
+                ("Jet_pt", "float32"),
+                ("Jet_eta", "float32"),
+                ("Jet_phi", "float32"),
+                ("Jet_mass", "float32"),
+                ("Jet_btag", "float32"),
+                ("Jet_puId", "bool"),
             ],
-            "TrigObj": [
-                ("TrigObj_pt", "float32"),
-                ("TrigObj_eta", "float32"),
-                ("TrigObj_phi", "float32"),
-                ("TrigObj_id", "int32")
-            ],
+
             "EventVariables": [
-                ("PV_npvsGood", "float32"), 
-                ("PV_ndof", "float32"),
-                ("PV_z", "float32"),
-                ("Flag_BadChargedCandidateFilter", "bool"),
-                ("Flag_HBHENoiseFilter", "bool"),
-                ("Flag_HBHENoiseIsoFilter", "bool"),
-                ("Flag_EcalDeadCellTriggerPrimitiveFilter", "bool"),
-                ("Flag_goodVertices", "bool"),
-                ("Flag_globalSuperTightHalo2016Filter", "bool"),
-                ("Flag_BadPFMuonFilter", "bool"),
-                ("Flag_BadChargedCandidateFilter", "bool"),
-                ("HLT_IsoMu27", "bool"),
-                ("run", "uint32"),
-                ("luminosityBlock", "uint32"),
-                ("event", "uint64")
-            ],
+                ("HLT_IsoMu24", "bool"),
+                ('MET_pt', 'float32'),
+                ('MET_phi', 'float32'),
+                ('MET_sumet', 'float32'),
+                ('MET_significance', 'float32'),
+                ('MET_CovXX', 'float32'),
+                ('MET_CovXY', 'float32'),
+                ('MET_CovYY', 'float32'),
+            ]
         }
-        datastructures["EventVariables"] += [
-            ("Pileup_nTrueInt", "uint32"),
-            ("Generator_weight", "float32"),
-            ("genWeight", "float32")
-        ]
-        datastructures["Muon"] += [
-            ("Muon_genPartIdx", "int32"),
-        ]
-        datastructures["GenPart"] = [
-            ("GenPart_pt", "float32"),
-        ]
-        dataset = Dataset("nanoaod", ["data/nanoaod_test.root"], datastructures, cache_location="./mycache/", treename="Events", datapath="")
+        dataset = Dataset("nanoaod", 1*["./data/nanoaod_test.root"], datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
       
         try:
             dataset.from_cache()
@@ -222,13 +207,13 @@ class TestKernels(unittest.TestCase):
     def test_kernel_mask_deltar_first(self):
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
-        trigobj = dataset.structs["TrigObj"][0]
+        jet = dataset.structs["Jet"][0]
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        sel_trigobj = (trigobj.id == 13)
-        muons_matched_to_trigobj = self.ha.mask_deltar_first(
-            muons, sel_mu, trigobj,
-            sel_trigobj, 0.5
+        sel_jet = (jet.pt > 10)
+        muons_matched_to_jet = self.ha.mask_deltar_first(
+            muons, sel_mu, jet,
+            sel_jet, 0.3
         )
         return muons.numevents()
         
@@ -303,10 +288,7 @@ class TestKernels(unittest.TestCase):
         ret["histogram_from_vector"] = t/1000/1000
         
         return ret 
-    
-use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
-NUMPY_LIB, ha = choose_backend(use_cuda=use_cuda)
-dataset = TestKernels.load_dataset(NUMPY_LIB)
 
+dataset = TestKernels.load_dataset(TestKernels.NUMPY_LIB)
 if __name__ == "__main__":
     unittest.main()

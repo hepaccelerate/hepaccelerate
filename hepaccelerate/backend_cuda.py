@@ -213,6 +213,21 @@ def sum_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
         for ielem in range(start, end):
             if mask_content[ielem]:
                 out[iev] += content[ielem]
+
+@cuda.jit
+def prod_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+
+    for iev in range(xi, offsets.shape[0]-1, xstride):
+        if not mask_rows[iev]:
+            continue
+            
+        start = offsets[iev]
+        end = offsets[iev + 1]
+        for ielem in range(start, end):
+            if mask_content[ielem]:
+                out[iev] *= content[ielem]
             
 @cuda.jit
 def max_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
@@ -321,6 +336,14 @@ def sum_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
     sum_in_offsets_cudakernel[32, 1024](content, struct.offsets, mask_rows, mask_content, sum_offsets)
     cuda.synchronize()
     return sum_offsets
+
+def prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
+    if not dtype:
+        dtype = content.dtype
+    ret = cupy.ones(len(struct.offsets) - 1, dtype=dtype)
+    prod_in_offsets_cudakernel[32, 1024](content, struct.offsets, mask_rows, mask_content, ret)
+    cuda.synchronize()
+    return ret
 
 def max_in_offsets(struct, content, mask_rows, mask_content):
     max_offsets = cupy.zeros(len(struct.offsets) - 1, dtype=content.dtype)
@@ -450,6 +473,36 @@ def histogram_from_vector(data, weights, bins, mask=None):
     out_w2 = out_w2.sum(axis=0)
 
     return cupy.asnumpy(out_w), cupy.asnumpy(out_w2), cupy.asnumpy(bins)
+
+def histogram_from_vector_several(variables, weights, mask):
+    all_arrays = []
+    all_bins = []
+    num_histograms = len(variables)
+
+    for array, bins in variables:
+        all_arrays += [array]
+        all_bins += [bins]
+
+    max_bins = max([b.shape[0] for b in all_bins])
+    stacked_array = cupy.stack(all_arrays, axis=0)
+    stacked_bins = cupy.concatenate(all_bins)
+    nbins = cupy.array([len(b) for b in all_bins])
+    nbins_sum = cupy.cumsum(nbins)
+    nbins_sum = cupy.hstack([cupy.array([0]), nbins_sum])
+
+    nblocks = 32
+ 
+    out_w = cupy.zeros((len(variables), nblocks, max_bins), dtype=np.float32)
+    out_w2 = cupy.zeros((len(variables), nblocks, max_bins), dtype=np.float32)
+    fill_histogram_several[nblocks,256](
+        stacked_array, weights, mask, stacked_bins,
+        nbins, nbins_sum, out_w, out_w2
+    )
+    out_w = out_w.sum(axis=1)
+    out_w2 = out_w2.sum(axis=1)
+    out_w_separated = [cupy.asnumpy(out_w[i, 0:nbins[i]-1]) for i in range(num_histograms)]
+    out_w2_separated = [cupy.asnumpy(out_w2[i, 0:nbins[i]-1]) for i in range(num_histograms)]
+    return out_w_separated, out_w2_separated, all_bins
 
 @cuda.jit
 def get_bin_contents_cudakernel(values, edges, contents, out):

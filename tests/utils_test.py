@@ -1,8 +1,12 @@
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend, JaggedStruct
 import uproot
+import numpy
 import numpy as np
 import unittest
+import os
 from uproot_methods.classes.TH1 import from_numpy
+
+USE_CUDA = bool(int(os.environ.get("HEPACCELERATE_CUDA", 0)))
 
 class TestJaggedStruct(unittest.TestCase):
     def test_jaggedstruct(self):
@@ -18,9 +22,10 @@ class TestJaggedStruct(unittest.TestCase):
             np.all(getattr(js, k) == getattr(js2, k))
 
 class TestHistogram(unittest.TestCase):
-    NUMPY_LIB, ha = choose_backend(use_cuda=False)
+    NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)
 
     def test_histogram(self):
+        np = TestHistogram.NUMPY_LIB
         data = np.array([2,3,4,5,6,7], dtype=np.float32)
         data[data<2] = 0
         weights = np.ones_like(data, dtype=np.float32)
@@ -31,6 +36,7 @@ class TestHistogram(unittest.TestCase):
         f["hist"]  = hr
         
         data = np.random.normal(size=10000)
+        data = np.array(data, dtype=np.float32)
         weights = np.ones_like(data, dtype=np.float32)
         w, w2, e = self.ha.histogram_from_vector(data, weights, np.linspace(-1,1,100, dtype=np.float32))
         hr = from_numpy((w, e))
@@ -38,6 +44,7 @@ class TestHistogram(unittest.TestCase):
         f.close()
 
     def test_histogram_several(self):
+        np = TestHistogram.NUMPY_LIB
         data = np.array([2,3,4,5,6,7], dtype=np.float32)
         mask = data>=2
         data[self.NUMPY_LIB.invert(mask)] = 0
@@ -46,13 +53,13 @@ class TestHistogram(unittest.TestCase):
         w, w2, e = self.ha.histogram_from_vector(data, weights, bins)
 
         ws, ws2, all_bins = self.ha.histogram_from_vector_several([(data, bins), (data, bins)], weights, mask)
-        assert(np.all(w == ws[0]))
-        assert(np.all(w == ws[1]))
-        assert(np.all(w2 == ws2[0]))
-        assert(np.all(w2 == ws2[1]))
+        assert(numpy.all(w == ws[0]))
+        assert(numpy.all(w == ws[1]))
+        assert(numpy.all(w2 == ws2[0]))
+        assert(numpy.all(w2 == ws2[1]))
 
 class TestDataset(unittest.TestCase):
-    NUMPY_LIB, ha = choose_backend(use_cuda=False)
+    NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)
     
     @staticmethod
     def load_dataset(num_iter=1):
@@ -145,7 +152,13 @@ class TestDataset(unittest.TestCase):
     
         memsize1 = dataset.memsize()
         rets = dataset.map(self.map_func)
+
+        #compacting uses JaggedArray functionality and can only be done on the numpy/CPU backend
+        dataset.move_to_device(np)
+        rets = [TestDataset.NUMPY_LIB.asnumpy(r) for r in rets]
         dataset.compact(rets)
+        dataset.move_to_device(TestDataset.NUMPY_LIB)
+
         memsize2 = dataset.memsize()
         assert(memsize1 > memsize2)
         print("compacted memory size ratio:", memsize2/memsize1)
@@ -165,6 +178,15 @@ class TestDataset(unittest.TestCase):
         ds_multi.load_root()
         assert(len(ds_multi.structs["Jet"]) == num_iter)
         njet = ds_multi.num_objects_loaded("Jet")
+       
+        #compute a per-event jet energy sum taking into account the offsets
+        jet_sume = TestDataset.NUMPY_LIB.hstack([TestDataset.ha.sum_in_offsets(
+            ds_multi.structs["Jet"][i],
+            ds_multi.structs["Jet"][i]["E"],
+            TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][i].numevents(), dtype=TestDataset.NUMPY_LIB.bool),
+            TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][i].numobjects(), dtype=TestDataset.NUMPY_LIB.bool)
+        ) for i in range(num_iter)])
+
         numevents = ds_multi.numevents()
         EventWeight_total = sum([md["precomputed_results"]["EventWeight"] for md in ds_multi.cache_metadata])
         numevents_total = sum([md["numevents"] for md in ds_multi.cache_metadata])
@@ -172,11 +194,16 @@ class TestDataset(unittest.TestCase):
         ds_multi.merge_inplace()
         assert(len(ds_multi.structs["Jet"]) == 1)
         assert(ds_multi.num_objects_loaded("Jet") == njet)
+        jet_sume_merged = TestDataset.ha.sum_in_offsets(
+            ds_multi.structs["Jet"][0],
+            ds_multi.structs["Jet"][0]["E"],
+            TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][0].numevents(), dtype=TestDataset.NUMPY_LIB.bool),
+            TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][0].numobjects(), dtype=TestDataset.NUMPY_LIB.bool)
+        )
+        assert(TestDataset.NUMPY_LIB.all(jet_sume_merged == jet_sume))
         assert(ds_multi.numevents() == numevents)
         assert(abs(ds_multi.cache_metadata[0]["precomputed_results"]["EventWeight"] - EventWeight_total) < 0.01)
         assert(abs(ds_multi.cache_metadata[0]["numevents"] - numevents_total) == 0)
 
 if __name__ == "__main__":
     unittest.main()
-    #th = TestHistogram()
-    #th.test_histogram_several()

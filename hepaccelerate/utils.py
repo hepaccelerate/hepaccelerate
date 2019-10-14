@@ -285,6 +285,21 @@ class JaggedStruct(object):
 
         return new_attrs
 
+    def concatenate(self, others):
+        new_attrs = {}
+        for k in self.attrs_data.keys():
+            data_arrs = [self.attrs_data[k]]
+            for o in others:
+                data_arrs += [o.attrs_data[k]]
+            new_attrs[k] = self.numpy_lib.hstack(data_arrs)
+        
+        offset_arrs = [self.offsets]
+        for o in others:
+            offset_arrs += [o.offsets[1:]+ offset_arrs[-1][-1]]
+        offsets = self.numpy_lib.hstack(offset_arrs)
+
+        return JaggedStruct(offsets, new_attrs, self.prefix, self.numpy_lib, self.attr_names_dtypes)
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
@@ -336,6 +351,7 @@ class BaseDataset(object):
 
     def preload(self, nthreads=1, verbose=False):
         t0 = time.time()
+        nevents = 0
         for ifn, fn in enumerate(self.filenames):
             #Empty ROOT file
             if os.stat(fn).st_size == 0:
@@ -344,6 +360,7 @@ class BaseDataset(object):
                 continue
             fi = uproot.open(fn)
             tt = fi.get(self.treename)
+            nevents += len(tt)
             if nthreads > 1:
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=nthreads) as executor:
@@ -354,7 +371,7 @@ class BaseDataset(object):
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("Loaded {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
+            print("preload: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(nevents, dt, nevents/dt))
 
     def num_events_raw(self):
         nev = 0
@@ -416,23 +433,25 @@ class Dataset(BaseDataset):
 
         new_structs = {}
         for structname in self.names_structs:
-            jags = {}
-            ifile = 0
-            for s in self.structs[structname]:
-                for attr_name in s.attrs_data.keys():
-                    if not attr_name in jags.keys():
-                        jags[attr_name] = []
-                    j = awkward.JaggedArray.fromoffsets(s.offsets, s.attrs_data[attr_name])
-                    jags[attr_name] += [j]
-                ifile += 1
+            #jags = {}
+            #ifile = 0
+            #for s in self.structs[structname]:
+            #    for attr_name in s.attrs_data.keys():
+            #        if not attr_name in jags.keys():
+            #            jags[attr_name] = []
+            #        j = awkward.JaggedArray.fromoffsets(s.offsets, s.attrs_data[attr_name])
+            #        jags[attr_name] += [j]
+            #    ifile += 1
 
-            offsets = None
-            attrs_data = {}
-            for k in jags.keys():
-                j = awkward.JaggedArray.concatenate(jags[k])
-                attrs_data[k] = j.content
-                offsets = j.offsets
-            js = JaggedStruct(offsets, attrs_data, s.prefix, s.numpy_lib, s.attr_names_dtypes)
+            #offsets = None
+            #attrs_data = {}
+            #for k in jags.keys():
+            #    j = awkward.JaggedArray.concatenate(jags[k])
+            #    attrs_data[k] = j.content
+            #    offsets = j.offsets
+            #js = JaggedStruct(offsets, attrs_data, s.prefix, s.numpy_lib, s.attr_names_dtypes)
+            s0 = self.structs[structname][0]
+            js = s0.concatenate(self.structs[structname][1:])
             new_structs[structname] = [js]
         new_structs = new_structs
         
@@ -672,7 +691,7 @@ class Dataset(BaseDataset):
                 del m
         
         cache_metadata = self.cache_metadata[ifn] 
-        with open(os.path.join(dn, bfn + ".cache.json".format(attr)), "w") as fi:
+        with open(os.path.join(dn, bfn + ".cache.json"), "w") as fi:
             fi.write(json.dumps(cache_metadata, indent=2))
 
         return

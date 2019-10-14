@@ -1,0 +1,59 @@
+Toy Analysis for dileptonic and semileptonic ttbar (via AR, MP etc)
+* Loose Lepton selection (requires pt>20, an “Id Loose” flag, relative isolation < 0.25)
+   * Both electrons and muons
+* Jet select/cleaning against loose leptons , jet pt > 25 , jet id
+* Compute event variables using selected cleaned jets
+   * HT, HT+loose leptons, MHT
+* Find opposite sign, same flavour pairs
+   * Closest to Z
+   * Highest pt pair
+   * Highest mass pair
+* Find opposite sign, opposite flavour pairs
+   * Highest pt pair
+   * Highest mass pair
+* Find jj on W mass
+   * Closest to W mass
+   * Minimizing (Mjj-Mw)**2/(20)**2 + j1_btag+j2_btag (proxy for an actual likelihood) 
+* Define B tagged jets
+   * Tight tagged
+   * Medium tagged
+   * Leading, subleading btagged jet
+* All triplets jjB 
+   * Minimizing (Mjj-Mw)**2/(20)**2 + j1_btag+j2_btag -j3_btag
+   * Minimizing mass diff to top nominal
+* Tight leptons for trigger eff and signal/control region definition
+   * pt>30 (fiducial region)
+   * Id tight, rel iso < 0.15
+* Trigger eff weight
+   * From leading lepton pt (no trigger obj matching)
+* Regions to be defined:
+   * Signal Dile: 2 loose leptons, opposite charge
+   * Signal Semi: 1 tight lepton, no second loose lepton, opposite charge
+   * DY control: 2 tight, closest to Z within 10 GeV of nominal Z 
+   * W+jet: 1 tight, no second loose, leading btag < medium OP
+   * Some other top selection (e.g. good candidate for mass, loose/tight lept)
+      * ???
+* Systematics:
+   * 50 JEC variations: no need for actual variations let’s scan from -25% to +25% with the 50 variations (steps of 1%)
+   * JER: use TRand smearing
+   * Mu Scale: up/down by 3%
+   * Ele Scale: up/down by 3%
+   * Btag weights x 10:
+      * Compute eventBtagWeights for 10 different values of the individual jetweights (from 0.9 to 1.1 in steps of 0.02)
+   * Lept eff weight
+      * ???
+* Histo to event weight
+   * Trigger eff
+   * Lepton eff
+* Weight arrays
+   * 100 PDF
+   * 8 qcdscale
+* Good runs/lumi selection
+* Long “OR” Trigger bit selection (expanding from wildcards?)
+* Output results (in multiple regions, with systematics):
+   * Cutflow: all selections individually (if allowed by dependencies), sorted as in declaration down to signal region
+   * Pt,eta for jets,leptons (tight and loose),W,Top cands(triples)
+   * MHT, HT, MET, rho, tkmet, nPVs
+   * Top and W mass in regions where it makes sense
+   * Z(dilepton) mass in regions where it makes sense
+   * N btags, N leptons

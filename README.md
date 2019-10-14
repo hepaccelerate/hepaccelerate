@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.com/hepaccelerate/hepaccelerate.svg?branch=master)](https://travis-ci.com/hepaccelerate/hepaccelerate)
+[![pipeline status](https://gitlab.cern.ch/jpata/hepaccelerate/badges/master/pipeline.svg)](https://gitlab.cern.ch/jpata/hepaccelerate/commits/master)
 [![DOI](https://zenodo.org/badge/191644111.svg)](https://zenodo.org/badge/latestdoi/191644111)
 
 # hepaccelerate
@@ -34,14 +35,15 @@ This code consists of two parts which can be used independently:
 
 ## Usage
 
-This is a minimal example from [tests/example.py](tests/example.py), which can be run from this repository using
+This is a minimal example from [examples/simple_hzz.py](../blob/master/examples/simple_hzz.py), which can be run from this repository directly using
 ~~~
-python3 tests/example.py
+PYTHONPATH=. python3 examples/simple_hzz.py
+PYTHONPATH=. HEPACCELERATE_CUDA=1 python3 examples/simple_hzz.py
 ~~~
 
 ```python
 #usr/bin/env python3
-#Run as `python3 tests/example.py`
+#Run as PYTHONPATH=. python3 examples/simple_hzz.py
 
 #In case you use CUDA, you may have to find the libnvvm.so on your system manually
 import os
@@ -53,7 +55,8 @@ import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 
 #choose whether or not to use the GPU backend
-NUMPY_LIB, ha = choose_backend(use_cuda=False)
+use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
+NUMPY_LIB, ha = choose_backend(use_cuda=use_cuda)
 
 #define our analysis function
 def analyze_data_function(data, parameters):
@@ -66,7 +69,6 @@ def analyze_data_function(data, parameters):
 
     mask_events = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
     mask_muons_passing_pt = muons.pt > parameters["muons_ptcut"]
-    #count how many muons per event pass the selection
     num_muons_event = ha.sum_in_offsets(muons, mask_muons_passing_pt, mask_events, muons.masks["all"], NUMPY_LIB.int8)
     mask_events_dimuon = num_muons_event == 2
 
@@ -76,7 +78,7 @@ def analyze_data_function(data, parameters):
 
     #compute a weighted histogram
     weights = NUMPY_LIB.ones(num_events, dtype=NUMPY_LIB.float32)
-    bins = NUMPY_LIB.linspace(0, 300, 101)
+    bins = NUMPY_LIB.linspace(0,300,101)
     hist_muons_pt = Histogram(*ha.histogram_from_vector(leading_muon_pt[mask_events_dimuon], weights[mask_events_dimuon], bins))
 
     #save it to the output
@@ -92,7 +94,7 @@ datastructures = {
             "Muon": [
                 ("Muon_Px", "float32"),
                 ("Muon_Py", "float32"),
-                ("Muon_Pz", "float32"),
+                ("Muon_Pz", "float32"), 
                 ("Muon_E", "float32"),
                 ("Muon_Charge", "int32"),
                 ("Muon_Iso", "float32")
@@ -123,14 +125,12 @@ except FileNotFoundError as e:
     dataset.load_root()
     dataset.to_cache()
 
-#process data with parameters
+#process data
 results = dataset.analyze(analyze_data_function, verbose=True, parameters={"muons_ptcut": 30.0})
-
-#save the results as a json
 results.save_json("out.json")
 ```
 
-A more complete CMS analysis example an be found in [analysis_hmumu.py](https://github.com/jpata/hepaccelerate-cms/blob/master/tests/hmm/analysis_hmumu.py). Currently, for simplicity and in the spirit of prototyping, that repository comes batteries-included with CMS-specific analysis methods.
+A more complete CMS analysis example an be found in [analysis_hmumu.py](https://github.com/hepaccelerate/hepaccelerate-cms/blob/master/tests/hmm/analysis_hmumu.py). Currently, for simplicity and in the spirit of prototyping, that repository comes batteries-included with CMS-specific analysis methods.
 
 ## Recommendations on data locality and remote data
 In order to make full use of modern CPUs or GPUs, you want to bring the data as close as possible to where the work is done, otherwise you will spend most of the time waiting for the data to arrive rather than actually performing the computations.

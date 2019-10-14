@@ -1,5 +1,5 @@
 #usr/bin/env python3
-#Run as PYTHONPATH=. python3 tests/example.py
+#Run as PYTHONPATH=. python3 examples/simple_hzz.py
 
 #In case you use CUDA, you may have to find the libnvvm.so on your system manually
 import os
@@ -11,7 +11,10 @@ import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 
 #choose whether or not to use the GPU backend
-NUMPY_LIB, ha = choose_backend(use_cuda=False)
+use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
+if use_cuda:
+    import setGPU
+NUMPY_LIB, ha = choose_backend(use_cuda=use_cuda)
 
 #define our analysis function
 def analyze_data_function(data, parameters):
@@ -33,7 +36,7 @@ def analyze_data_function(data, parameters):
 
     #compute a weighted histogram
     weights = NUMPY_LIB.ones(num_events, dtype=NUMPY_LIB.float32)
-    bins = NUMPY_LIB.linspace(0,300,101)
+    bins = NUMPY_LIB.linspace(0,300,101, dtype=NUMPY_LIB.float32)
     hist_muons_pt = Histogram(*ha.histogram_from_vector(leading_muon_pt[mask_events_dimuon], weights[mask_events_dimuon], bins))
 
     #save it to the output
@@ -79,6 +82,9 @@ except FileNotFoundError as e:
     print("Cache not found, creating...")
     dataset.load_root()
     dataset.to_cache()
+
+#move to GPU if CUDA was specified
+dataset.move_to_device(NUMPY_LIB)
 
 #process data
 results = dataset.analyze(analyze_data_function, verbose=True, parameters={"muons_ptcut": 30.0})
