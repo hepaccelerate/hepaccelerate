@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.com/hepaccelerate/hepaccelerate.svg?branch=master)](https://travis-ci.com/hepaccelerate/hepaccelerate)
 [![pipeline status](https://gitlab.cern.ch/jpata/hepaccelerate/badges/master/pipeline.svg)](https://gitlab.cern.ch/jpata/hepaccelerate/commits/master)
-[![DOI](https://zenodo.org/badge/191644111.svg)](https://zenodo.org/badge/latestdoi/191644111)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3491423.svg)](https://doi.org/10.5281/zenodo.3491423)
 
 # hepaccelerate
 
