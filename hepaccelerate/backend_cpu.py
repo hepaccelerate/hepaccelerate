@@ -48,15 +48,6 @@ def searchsorted_left(vals, bins, inds_out):
     for i in numba.prange(len(vals)):
         inds_out[i] = searchsorted_devfunc_left(bins, vals[i])
 
-def searchsorted(bins, vals, side):
-    out = np.zeros(len(vals), dtype=np.int32)
-    if side == "left":
-        searchsorted_left(vals, bins, out)
-    else:
-        searchsorted_right(vals, bins, out)
-    return out
-
-
 @numba.njit(fastmath=True, parallel=True)
 def fill_histogram_several(data, weights, mask, bins, nbins, nbins_sum, out_w, out_w2):
   
@@ -423,8 +414,46 @@ def copyto_dst_indices(dst, src, inds_dst):
         i2 = inds_dst[i1] 
         dst[i2] = src[i1]
 
-#User-friendly functions that call the kernels, but create the output arrays themselves
+    
+@numba.njit(parallel=True, fastmath=True)
+def get_bin_contents_kernel(values, edges, contents, out):
+    for i in numba.prange(len(values)):
+        v = values[i]
+        ibin = searchsorted_devfunc_right(edges, v)
+        if ibin>=0 and ibin < len(contents):
+            out[i] = contents[ibin]
 
+@numba.njit(parallel=True, fastmath=True)
+def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
+    for iev in numba.prange(len(runs)):
+        run = runs[iev]
+        lumi = lumis[iev]
+
+        if run in masks:
+            lumimask = masks[run]
+            ind = searchsorted_devfunc_right(lumimask, lumi)
+            if np.mod(ind, 2) == 1:
+                mask_out[iev] = 1
+
+@numba.njit(parallel=True, fastmath=True)
+def compute_new_offsets(offsets_old, mask_objects, offsets_new):
+    counts = np.zeros(len(offsets_old)-1, dtype=np.int64)
+    for iev in numba.prange(len(offsets_old)-1):
+        start = offsets_old[iev]
+        end = offsets_old[iev + 1]
+        ret = 0
+        for ielem in range(start, end):
+            if mask_objects[ielem]:
+                ret += 1
+            counts[iev] = ret
+    count_tot = 0
+    for iev in range(len(counts)):
+        offsets_new[iev] = count_tot
+        offsets_new[iev+1] = count_tot + counts[iev]
+        count_tot += counts[iev] 
+
+
+#User-friendly functions that call the kernels, but create the output arrays themselves
 def sum_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
     if not dtype:
         dtype = content.dtype
@@ -511,46 +540,16 @@ def histogram_from_vector(data, weights, bins, mask=None):
     else:
         fill_histogram_masked(data, weights, bins, mask, out_w, out_w2) 
     return out_w, out_w2, bins
-    
-@numba.njit(parallel=True, fastmath=True)
-def get_bin_contents_kernel(values, edges, contents, out):
-    for i in numba.prange(len(values)):
-        v = values[i]
-        ibin = searchsorted_devfunc_right(edges, v)
-        if ibin>=0 and ibin < len(contents):
-            out[i] = contents[ibin]
 
 def get_bin_contents(values, edges, contents, out):
     assert(values.shape == out.shape)
     assert(edges.shape[0] == contents.shape[0]+1)
     get_bin_contents_kernel(values, edges, contents, out)
 
-
-@numba.njit(parallel=True, fastmath=True)
-def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
-    for iev in numba.prange(len(runs)):
-        run = runs[iev]
-        lumi = lumis[iev]
-
-        if run in masks:
-            lumimask = masks[run]
-            ind = searchsorted_devfunc_right(lumimask, lumi)
-            if np.mod(ind, 2) == 1:
-                mask_out[iev] = 1
-
-@numba.njit(parallel=True, fastmath=True)
-def compute_new_offsets(offsets_old, mask_objects, offsets_new):
-    counts = np.zeros(len(offsets_old)-1, dtype=np.int64)
-    for iev in numba.prange(len(offsets_old)-1):
-        start = offsets_old[iev]
-        end = offsets_old[iev + 1]
-        ret = 0
-        for ielem in range(start, end):
-            if mask_objects[ielem]:
-                ret += 1
-            counts[iev] = ret
-    count_tot = 0
-    for iev in range(len(counts)):
-        offsets_new[iev] = count_tot
-        offsets_new[iev+1] = count_tot + counts[iev]
-        count_tot += counts[iev] 
+def searchsorted(bins, vals, side="left"):
+    out = np.zeros(len(vals), dtype=np.int32)
+    if side == "left":
+        searchsorted_left(vals, bins, out)
+    else:
+        searchsorted_right(vals, bins, out)
+    return out

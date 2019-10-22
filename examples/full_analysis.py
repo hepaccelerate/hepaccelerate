@@ -1,19 +1,14 @@
-import os
-import glob
-import numpy as np
-import uproot
-import time
+import os, glob, sys, time, argparse, multiprocessing
+import pickle, math, requests
 from collections import OrderedDict
-import argparse
-import multiprocessing
-import pickle
 
+import uproot
 import hepaccelerate
 from hepaccelerate.utils import Histogram, Results
 
-import math
 import numba
 from numba import cuda
+import numpy as np
 
 use_cuda = bool(int(os.environ.get("HEPACCELERATE_CUDA", 0)))
 
@@ -23,13 +18,45 @@ save_arrays = False
 #GPUs to use when multiprocessing
 gpu_id_list = [0, 1]
 
+#just to load the DNN model files
+def download_file(filename, url):
+    """
+    Download an URL to a file
+    """
+    print("downloading {0}".format(url))
+    with open(filename, 'wb') as fout:
+        response = requests.get(url, stream=True, verify=False)
+        response.raise_for_status()
+        # Write response data to file
+        iblock = 0
+        for block in response.iter_content(4096):
+            if iblock % 1000 == 0:
+                sys.stdout.write(".");sys.stdout.flush()
+            iblock += 1
+            fout.write(block)
+    print("download complete!")
+
+def download_if_not_exists(filename, url):
+    """
+    Download a URL to a file if the file
+    does not exist already.
+    Returns
+    -------
+    True if the file was downloaded,
+    False if it already existed
+    """
+    if not os.path.exists(filename):
+        download_file(filename, url)
+        return True
+    return False
+
 #DNN weights produced using examples/train_dnn.py and setting save_arrays=True
 class DNNModel:
     def __init__(self):
         import keras
-        self.models = [
-            keras.models.load_model("data/model_kf{0}.h5".format(i)) for i in [0, ]
-        ]
+        self.models = []
+        for i in range(1):
+            self.models += [keras.models.load_model("data/model_kf{0}.h5".format(i))]
 
     def eval(self, X, use_cuda):
         if use_cuda:
@@ -93,6 +120,10 @@ def create_datastructure(ismc):
     return datastructures
 
 def get_selected_muons(muons, pt_cut_leading, pt_cut_subleading, aeta_cut, iso_cut):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
+
     passes_iso = muons.pfRelIso03_all > iso_cut
     passes_id = muons.tightId == True
     passes_subleading_pt = muons.pt > pt_cut_subleading
@@ -107,14 +138,19 @@ def get_selected_muons(muons, pt_cut_leading, pt_cut_subleading, aeta_cut, iso_c
     selected_muons_leading = selected_muons & passes_leading_pt
     
     evs_all = NUMPY_LIB.ones(muons.numevents(), dtype=bool)
-    
-    selected_events = ha.sum_in_offsets(
+
+    #select events with at least 1 good muon
+    evs_1mu = ha.sum_in_offsets(
         muons, selected_muons_leading, evs_all, muons.masks["all"]
     ) >= 1
     
-    return selected_muons, selected_events
+    return selected_muons, evs_1mu
 
 def get_selected_electrons(electrons, pt_cut_leading, pt_cut_subleading, aeta_cut, iso_cut):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
+
     passes_iso = electrons.pfRelIso03_all > iso_cut
     passes_id = electrons.pfId == True
     passes_subleading_pt = electrons.pt > pt_cut_subleading
@@ -131,13 +167,16 @@ def get_selected_electrons(electrons, pt_cut_leading, pt_cut_subleading, aeta_cu
     
     selected_electrons_leading = selected_electrons & passes_leading_pt
     
-    selected_events = ha.sum_in_offsets(
+    ev_1el = ha.sum_in_offsets(
         electrons, selected_electrons_leading, evs_all, electrons.masks["all"]
-    ) >= 0
+    ) >= 1
         
-    return selected_electrons, selected_events
+    return selected_electrons, ev_1el
 
 def apply_lepton_corrections(leptons, mask_leptons, lepton_weights):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
     
     corrs = NUMPY_LIB.zeros_like(leptons.pt)
     ha.get_bin_contents(leptons.pt, lepton_weights[:, 0], lepton_weights[:-1, 1], corrs)
@@ -151,11 +190,19 @@ def apply_lepton_corrections(leptons, mask_leptons, lepton_weights):
     return corr_per_event
 
 def apply_jec(jets_pt_orig, bins, jecs):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
+
     corrs = NUMPY_LIB.zeros_like(jets_pt_orig)
     ha.get_bin_contents(jets_pt_orig, bins, jecs, corrs)
     return 1.0 + corrs
 
 def select_jets(jets, mu, el, selected_muons, selected_electrons, pt_cut, aeta_cut, jet_lepton_dr_cut, btag_cut):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
+
     passes_id = jets.puId == True
     passes_aeta = NUMPY_LIB.abs(jets.eta) < aeta_cut
     passes_pt = jets.pt > pt_cut
@@ -177,6 +224,10 @@ def select_jets(jets, mu, el, selected_muons, selected_electrons, pt_cut, aeta_c
     return selected_jets_no_lepton, selected_jets_btag
 
 def fill_histograms_several(hists, systematic_name, histname_prefix, variables, mask, weights, use_cuda):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
+
     all_arrays = []
     all_bins = []
     num_histograms = len(variables)
@@ -246,6 +297,9 @@ def update_histograms_systematic(hists, hist_name, systematic_name, target_histo
         hists[hist_name].update(target_histogram)
 
 def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
+    this_worker = get_worker()
+    NUMPY_LIB = this_worker.NUMPY_LIB
+    ha = this_worker.ha
     hists = {}
     histo_bins = {
         "nmu": np.array([0,1,2,3], dtype=np.float32),
@@ -301,8 +355,8 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     el1 = el.select_nth(0, object_mask=sel_el)
     el2 = el.select_nth(1, object_mask=sel_el)
     
-    weight_ev_mu = apply_lepton_corrections(mu, sel_mu, electron_weights)
-    weight_ev_el = apply_lepton_corrections(el, sel_el, electron_weights)
+    weight_ev_mu = apply_lepton_corrections(mu, sel_mu, this_worker.electron_weights)
+    weight_ev_el = apply_lepton_corrections(el, sel_el, this_worker.electron_weights)
    
     weights = {"nominal": weight_ev_mu * weight_ev_el}
 
@@ -313,9 +367,9 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
 
     all_jecs = [("nominal", "", None)]
     if ismc:
-        for i in range(jecs_up.shape[1]):
-            all_jecs += [(i, "up", jecs_up[:, i])]
-            all_jecs += [(i, "down", jecs_down[:, i])]
+        for i in range(this_worker.jecs_up.shape[1]):
+            all_jecs += [(i, "up", this_worker.jecs_up[:, i])]
+            all_jecs += [(i, "down", this_worker.jecs_down[:, i])]
     
     jets_pt_orig = NUMPY_LIB.copy(jets.pt)
 
@@ -348,7 +402,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
             systname = ("jec{0}".format(ijec), sdir)
  
         if not jec is None:
-            jet_pt_corr = apply_jec(jets_pt_orig, jecs_bins, jec)
+            jet_pt_corr = apply_jec(jets_pt_orig, this_worker.jecs_bins, jec)
             #compute the corrected jet pt        
             jets.pt = jets_pt_orig * NUMPY_LIB.abs(jet_pt_corr)
         print("jec", ijec, sdir, jets.pt.mean())
@@ -368,23 +422,23 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
         best_comb_3j = NUMPY_LIB.zeros((jets.numevents(), 3), dtype=NUMPY_LIB.int32)
 
         if use_cuda:
-            kernels.comb_3_invmass_closest[32,256](jets.pt, jets.eta, jets.phi, jets.mass, jets.offsets, 172.0, inv_mass_3j, best_comb_3j)
+            this_worker.kernels.comb_3_invmass_closest[32,256](jets.pt, jets.eta, jets.phi, jets.mass, jets.offsets, 172.0, inv_mass_3j, best_comb_3j)
             cuda.synchronize()
         else:
-            kernels.comb_3_invmass_closest(jets.pt, jets.eta, jets.phi, jets.mass, jets.offsets, 172.0, inv_mass_3j, best_comb_3j)
+            this_worker.kernels.comb_3_invmass_closest(jets.pt, jets.eta, jets.phi, jets.mass, jets.offsets, 172.0, inv_mass_3j, best_comb_3j)
 
         best_btag = NUMPY_LIB.zeros(jets.numevents(), dtype=NUMPY_LIB.float32)
         if use_cuda:
-            kernels.max_val_comb[32,1024](jets.btag, jets.offsets, best_comb_3j, best_btag)
+            this_worker.kernels.max_val_comb[32,1024](jets.btag, jets.offsets, best_comb_3j, best_btag)
             cuda.synchronize()
         else:
-            kernels.max_val_comb(jets.btag, jets.offsets, best_comb_3j, best_btag)
+            this_worker.kernels.max_val_comb(jets.btag, jets.offsets, best_comb_3j, best_btag)
 
         #get the events with at least three jets
         sel_ev_jet = (njet >= 3)
-        sel_ev_bjet = (nbjet >= 0)
+        sel_ev_bjet = (nbjet >= 1)
         
-        selected_events = sel_ev_mu & sel_ev_el & sel_ev_jet & sel_ev_bjet
+        selected_events = (sel_ev_mu | sel_ev_el) & sel_ev_jet & sel_ev_bjet
         print("Selected {0} events".format(selected_events.sum()))
 
         #get contiguous vectors of the first two jet data
@@ -425,7 +479,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
         #pred_s = NUMPY_LIB.std(pred, axis=1)
 
         fill_histograms_several(
-            hists, systname, "hist__nmu1_njetge3_nbjetge0__",
+            hists, systname, "hist__nmu1_njetge3_nbjetge1__",
             [
                 #(pred_m, "pred_m", histo_bins["dnnpred_m"]),
                 #(pred_s, "pred_s", histo_bins["dnnpred_s"]),
@@ -484,7 +538,6 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
                 np.save(fi, NUMPY_LIB.asnumpy(arr))
 
     t1 = time.time()
-   
 
     res = Results({})
     for hn in hists.keys():
@@ -496,7 +549,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     print("run_analysis: {0:.2E} events in {1:.2f} seconds, speed {2:.2E} Hz".format(dataset.numevents(), t1 - t0, speed))
     return res
 
-def load_dataset(datapath, cachepath, filenames, ismc, nthreads, skip_cache, do_skim):
+def load_dataset(datapath, cachepath, filenames, ismc, nthreads, skip_cache, do_skim, NUMPY_LIB, ha):
     ds = hepaccelerate.Dataset(
         "dataset",
         filenames,
@@ -570,6 +623,9 @@ def load_dataset(datapath, cachepath, filenames, ismc, nthreads, skip_cache, do_
     return ds, timing_results
 
 def compute_inv_mass(objects, mask_events, mask_objects, use_cuda):
+    this_worker = get_worker()
+    NUMPY_LIB, ha = this_worker.NUMPY_LIB, this_worker.ha 
+
     inv_mass = NUMPY_LIB.zeros(len(mask_events), dtype=np.float32)
     pt_total = NUMPY_LIB.zeros(len(mask_events), dtype=np.float32)
     if use_cuda:
@@ -687,9 +743,10 @@ def parse_args():
     return args
 
 def multiprocessing_initializer(args, use_cuda):
-    global dnnmodel, NUMPY_LIB, ha
-    global electron_weights, jecs_bins, jecs_up, jecs_down
-    global kernels
+    try:
+        this_worker = get_worker()
+    except Exception as e:
+        this_worker = None
 
     import tensorflow as tf
     config = tf.ConfigProto()
@@ -716,39 +773,41 @@ def multiprocessing_initializer(args, use_cuda):
 
     from keras.backend.tensorflow_backend import set_session
     set_session(tf.Session(config=config))
-    dnnmodel = DNNModel()
+    this_worker.dnnmodel = DNNModel()
     
     NUMPY_LIB, ha = hepaccelerate.choose_backend(use_cuda)
+    this_worker.NUMPY_LIB = NUMPY_LIB
+    this_worker.ha = ha
     if use_cuda:
         import cuda_kernels as kernels
     else:
         import cpu_kernels as kernels
+    this_worker.kernels = kernels
 
     #Create random vectors as placeholders of lepton pt event weights
-    electron_weights = NUMPY_LIB.zeros((100, 2), dtype=NUMPY_LIB.float32)
-    electron_weights[:, 0] = NUMPY_LIB.linspace(0, 200, electron_weights.shape[0])[:]
-    electron_weights[:, 1] = 1.0
-    
+    this_worker.electron_weights = NUMPY_LIB.zeros((100, 2), dtype=NUMPY_LIB.float32)
+    this_worker.electron_weights[:, 0] = NUMPY_LIB.linspace(0, 200, this_worker.electron_weights.shape[0])[:]
+    this_worker.electron_weights[:, 1] = 1.0
+
     #Create random vectors as placeholders of pt-dependent jet energy corrections
-    jecs_bins = NUMPY_LIB.zeros(100, dtype=NUMPY_LIB.float32 ) 
-    jecs_up = NUMPY_LIB.zeros((99, args.njec), dtype=NUMPY_LIB.float32)
-    jecs_down = NUMPY_LIB.zeros((99, args.njec), dtype=NUMPY_LIB.float32)
-    jecs_bins[:] = NUMPY_LIB.linspace(0, 200, jecs_bins.shape[0])[:]
+    this_worker.jecs_bins = NUMPY_LIB.zeros(100, dtype=NUMPY_LIB.float32 ) 
+    this_worker.jecs_up = NUMPY_LIB.zeros((99, args.njec), dtype=NUMPY_LIB.float32)
+    this_worker.jecs_down = NUMPY_LIB.zeros((99, args.njec), dtype=NUMPY_LIB.float32)
+    this_worker.jecs_bins[:] = NUMPY_LIB.linspace(0, 200, this_worker.jecs_bins.shape[0])[:]
 
     for i in range(args.njec):
-        jecs_up[:, i] = 0.3*(float(i+1)/float(args.njec)) 
-        jecs_down[:, i] = -0.3*(float(i+1)/float(args.njec)) 
+        this_worker.jecs_up[:, i] = 0.3*(float(i+1)/float(args.njec)) 
+        this_worker.jecs_down[:, i] = -0.3*(float(i+1)/float(args.njec)) 
 
 def load_and_analyze(args_tuple):
     fn, args, dataset, ismc, ichunk = args_tuple
-    global dnnmodel
-    
-    NUMPY_LIB, ha = hepaccelerate.choose_backend(use_cuda)
+    this_worker = get_worker()
+    NUMPY_LIB, ha = hepaccelerate.choose_backend(args.use_cuda)
     
     print("Loading {0}".format(fn))
-    ds, timing_results = load_dataset(args.datapath, args.cachepath, fn, ismc, args.nthreads, args.nocache, args.skim)
+    ds, timing_results = load_dataset(args.datapath, args.cachepath, fn, ismc, args.nthreads, args.nocache, args.skim, NUMPY_LIB, ha)
     t0 = time.time()
-    ret = run_analysis(ds, "{0}_{1}".format(dataset, ichunk), dnnmodel, use_cuda, ismc)
+    ret = run_analysis(ds, "{0}_{1}".format(dataset, ichunk), this_worker.dnnmodel, use_cuda, ismc)
     t1 = time.time()
     ret["timing"] = Results(timing_results)
     ret["timing"]["run_analysis"] = t1 - t0
@@ -773,78 +832,69 @@ parameters = {
 if __name__ == "__main__":
     np.random.seed(0)
     args = parse_args()
-    print(args)
+    args.use_cuda = use_cuda
+    for i in range(1):
+        download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
 
-    if len(args.filenames) > 0:
-        print("Processing the provided files")
-        multiprocessing_initializer(args, use_cuda)
-        walltime_t0 = time.time()
-        ret = load_and_analyze((args.filenames, args, "dataset", args.ismc, 0))
-        print(np.sum(ret["hists"]["hist__nmu1_njetge3_nbjetge0__inv_mass_3j"]["nominal"].contents))
-        walltime_t1 = time.time()
-        timing = ret["timing"]
-        timing["cuda"] = use_cuda
-        timing["njec"] = args.njec
-        timing["nthreads"] = args.nthreads
-        timing["walltime"] = walltime_t1 - walltime_t0
-        print("Writing output pkl")
-        with open(args.out, "wb") as fi:
-            pickle.dump({"hists": ret["hists"], "numevents": ret["numevents"], "timing": timing}, fi)
-    else:
-        print("Processing all datasets")
-        datasets = [
-            ("DYJetsToLL", "/opendata_files/DYJetsToLL-merged/*.root", True),
-            ("TTJets_FullLeptMGDecays", "/opendata_files/TTJets_FullLeptMGDecays-merged/*.root", True),
-            ("TTJets_Hadronic", "/opendata_files/TTJets_Hadronic-merged/*.root", True),
-            ("TTJets_SemiLeptMGDecays", "/opendata_files/TTJets_SemiLeptMGDecays-merged/*.root", True),
-            ("W1JetsToLNu", "/opendata_files/W1JetsToLNu-merged/*.root", True),
-            ("W2JetsToLNu", "/opendata_files/W2JetsToLNu-merged/*.root", True),
-            ("W3JetsToLNu", "/opendata_files/W3JetsToLNu-merged/*.root", True),
-            ("GluGluToHToMM", "/opendata_files/GluGluToHToMM-merged/*.root", True),
-            ("SingleMu", "/opendata_files/SingleMu-merged/*.root", False),
-        ]
-        arglist = []
+    from dask.distributed import Client, LocalCluster
+    from distributed import get_worker
 
-        walltime_t0 = time.time()
-        for dataset, fn_pattern, ismc in datasets:
-            filenames = glob.glob(args.datapath + fn_pattern)
-            if(len(filenames) == 0):
-                raise Exception("Could not find any filenames for {0}: {1} {2}".format(dataset, args.datapath, fn_pattern))
-            ichunk = 0
-            for fn in chunks(filenames, 1):
-                arglist += [(fn, args, dataset, ismc, ichunk)]
-                ichunk += 1
+    cluster = LocalCluster(n_workers=args.njobs, threads_per_worker=args.nthreads, memory_limit=0)
+    client = Client(cluster)
 
-        print("Processing {0} arguments".format(len(arglist)))
-        if args.njobs == 1:
-            multiprocessing_initializer(args, use_cuda)
-            ret = [load_and_analyze(a) for a in arglist]
-        else:
-            ctx = multiprocessing.get_context('spawn')
-            pool = ctx.Pool(args.njobs, multiprocessing_initializer, [args, use_cuda])
-            ret = pool.map(load_and_analyze, arglist)
-            print("map is done")
-            pool.terminate()
-        walltime_t1 = time.time()
+    #run initialization
+    client.run(multiprocessing_initializer, args, use_cuda)
+    
+    print("Processing all datasets")
+    datasets = [
+        ("DYJetsToLL", "/opendata_files/DYJetsToLL-merged/*.root", True),
+        ("TTJets_FullLeptMGDecays", "/opendata_files/TTJets_FullLeptMGDecays-merged/*.root", True),
+        ("TTJets_Hadronic", "/opendata_files/TTJets_Hadronic-merged/*.root", True),
+        ("TTJets_SemiLeptMGDecays", "/opendata_files/TTJets_SemiLeptMGDecays-merged/*.root", True),
+        ("W1JetsToLNu", "/opendata_files/W1JetsToLNu-merged/*.root", True),
+        ("W2JetsToLNu", "/opendata_files/W2JetsToLNu-merged/*.root", True),
+        ("W3JetsToLNu", "/opendata_files/W3JetsToLNu-merged/*.root", True),
+        ("GluGluToHToMM", "/opendata_files/GluGluToHToMM-merged/*.root", True),
+        ("SingleMu", "/opendata_files/SingleMu-merged/*.root", False),
+    ]
+    arglist = []
 
-        print("Merging outputs")
-        hists = {ds[0]: [] for ds in datasets}
-        numevents = {ds[0]: 0 for ds in datasets}
-        for r, _args in zip(ret, arglist):
-            rh = r["hists"]
-            ds = _args[2]
-            hists[ds] += [Results(r["hists"])]
-            numevents[ds] += r["numevents"]
+    walltime_t0 = time.time()
+    for dataset, fn_pattern, ismc in datasets:
+        filenames = glob.glob(args.datapath + fn_pattern)
+        if(len(filenames) == 0):
+            raise Exception("Could not find any filenames for dataset={0}: {{datapath}}/{{fn_pattern}}={1}/{2}".format(dataset, args.datapath, fn_pattern))
+        ichunk = 0
+        for fn in chunks(filenames, 1):
+            arglist += [(fn, args, dataset, ismc, ichunk)]
+            ichunk += 1
 
-        timing = sum([r["timing"] for r in ret], Results({}))
-        timing["cuda"] = use_cuda
-        timing["njec"] = args.njec
-        timing["nthreads"] = args.nthreads
-        timing["walltime"] = walltime_t1 - walltime_t0
+    print("Processing {0} arguments".format(len(arglist)))
+    futures = client.map(load_and_analyze, arglist)
+    ret = [fut.result() for fut in futures]
+    walltime_t1 = time.time()
 
-        for k, v in hists.items():
-            hists[k] = sum(hists[k], Results({}))
-        
-        print("Writing output pkl")
-        with open(args.out, "wb") as fi:
-            pickle.dump({"hists": hists, "numevents": numevents, "timing": timing}, fi)
+    print("Merging outputs")
+    hists = {ds[0]: [] for ds in datasets}
+    numevents = {ds[0]: 0 for ds in datasets}
+    for r, _args in zip(ret, arglist):
+        rh = r["hists"]
+        ds = _args[2]
+        hists[ds] += [Results(r["hists"])]
+        numevents[ds] += r["numevents"]
+
+    timing = sum([r["timing"] for r in ret], Results({}))
+    timing["cuda"] = use_cuda
+    timing["njec"] = args.njec
+    timing["nthreads"] = args.nthreads
+    timing["walltime"] = walltime_t1 - walltime_t0
+
+    for k, v in hists.items():
+        hists[k] = sum(hists[k], Results({}))
+    
+    print("Writing output pkl")
+    with open(args.out, "wb") as fi:
+        pickle.dump({"hists": hists, "numevents": numevents, "timing": timing}, fi)
+    client.shutdown()
+    sum_numev = sum(numevents.values())
+    print("Processed {0} events in {1:.1f} seconds, {2:.2E} Hz".format(sum_numev, timing["walltime"], sum_numev / timing["walltime"]))

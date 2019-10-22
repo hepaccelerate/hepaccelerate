@@ -93,7 +93,7 @@ class TestKernels(unittest.TestCase):
                 ('MET_CovYY', 'float32'),
             ]
         }
-        dataset = Dataset("nanoaod", 1*["./data/nanoaod_test.root"], datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
+        dataset = Dataset("nanoaod", ["./data/nanoaod_test.root"], datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
       
         try:
             dataset.from_cache()
@@ -120,7 +120,6 @@ class TestKernels(unittest.TestCase):
         speed = float(n)/dt
         return speed
 
-    
     def test_kernel_sum_in_offsets(self):
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
@@ -233,6 +232,21 @@ class TestKernels(unittest.TestCase):
         self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32))
         return muons.numevents()
 
+    def test_kernel_histogram_from_vector_several(self):
+        dataset = self.dataset
+        muons = dataset.structs["Muon"][0]
+        mask = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
+        weights = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.float32)
+        variables = [
+            (muons.pt, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32)),
+            (muons.eta, self.NUMPY_LIB.linspace(-4,4,100, dtype=self.NUMPY_LIB.float32)),
+            (muons.phi, self.NUMPY_LIB.linspace(-4,4,100, dtype=self.NUMPY_LIB.float32)),
+            (muons.mass, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32)),
+            (muons.charge, self.NUMPY_LIB.linspace(-1,1,3, dtype=self.NUMPY_LIB.float32)),
+        ]
+        ret = self.ha.histogram_from_vector_several(variables, weights, mask)
+        return muons.numevents()
+
     def test_timing(self):
         with open("kernel_benchmarks.txt", "a") as of:
             for i in range(5):
@@ -286,6 +300,10 @@ class TestKernels(unittest.TestCase):
         t = self.time_kernel(self.test_kernel_histogram_from_vector)
         print("histogram_from_vector {0:.2f} MHz".format(t/1000/1000))
         ret["histogram_from_vector"] = t/1000/1000
+        
+        t = self.time_kernel(self.test_kernel_histogram_from_vector_several)
+        print("histogram_from_vector_several {0:.2f} MHz".format(t/1000/1000))
+        ret["histogram_from_vector_several"] = t/1000/1000
         
         return ret 
 

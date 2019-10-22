@@ -14,11 +14,11 @@ from setuptools import find_packages, setup, Command
 # Package meta-data.
 NAME = 'hepaccelerate'
 DESCRIPTION = 'Fast kernels for analyzing jagged columnar data common in high-energy physics.'
-URL = 'https://github.com/jpata/hepaccelerate'
+URL = 'https://github.com/hepaccelerate/hepaccelerate'
 EMAIL = 'joosep.pata@cern.ch'
 AUTHOR = 'Joosep Pata'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
@@ -28,6 +28,7 @@ REQUIRED = [
 # What packages are optional?
 EXTRAS = {
     'cuda': ['cupy', 'cudatoolkit'],
+    'dask': ['dask', 'distributed']
 }
 
 # The rest you shouldn't have to touch too much :)

@@ -44,9 +44,7 @@ def searchsorted_inner_left(a, v):
 
 @cuda.jit(device=True)
 def searchsorted_devfunc_right(bins, val):
-
     ret = searchsorted_inner_right(bins, val)
-    
     if val < bins[0]:
         ret = 0
     if val >= bins[len(bins)-1]:
@@ -55,7 +53,6 @@ def searchsorted_devfunc_right(bins, val):
 
 @cuda.jit(device=True)
 def searchsorted_devfunc_left(bins, val):
-
     ret = searchsorted_inner_left(bins, val)
     if val < bins[0]:
         return 0
@@ -80,18 +77,6 @@ def searchsorted_kernel_left(vals, arr, inds_out):
     
     for i in range(xi, len(vals), xstride):
         inds_out[i] = searchsorted_devfunc_left(arr, vals[i])
-
-def searchsorted(arr, vals, side="right"):
-    """
-    Find indices to insert vals into arr to preserve order.
-    """
-    ret = cupy.zeros_like(vals, dtype=cupy.int32)
-    if side == "right":
-        searchsorted_kernel_right[32, 1024](vals, arr, ret)
-    elif side == "left":
-        searchsorted_kernel_left[32, 1024](vals, ret, arr)
-    cuda.synchronize()
-    return ret 
 
 @cuda.jit
 def fill_histogram_several(data, weights, mask, bins, nbins, nbins_sum, out_w, out_w2):
@@ -325,6 +310,108 @@ def broadcast_cudakernel(content, offsets, out):
         for ielem in range(start, end):
             out[ielem] = content[iev]
 
+@cuda.jit
+def get_bin_contents_cudakernel(values, edges, contents, out):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    for i in range(xi, len(values), xstride):
+        v = values[i]
+        ibin = searchsorted_devfunc_right(edges, v)
+        if ibin>=0 and ibin < len(contents):
+            out[i] = contents[ibin]
+
+@cuda.jit
+def copyto_dst_indices_cudakernel(dst, src, inds_dst):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    for i1 in range(xi, len(src), xstride):
+        i2 = inds_dst[i1] 
+        dst[i2] = src[i1]
+
+@cuda.jit
+def compute_new_offsets_cudakernel(offsets_old, mask_objects, counts, offsets_new):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+
+    for iev in range(xi, len(offsets_old)-1, xstride):
+        start = offsets_old[iev]
+        end = offsets_old[iev + 1]
+        ret = 0
+        for ielem in range(start, end):
+            if mask_objects[ielem]:
+                ret += 1
+            counts[iev] = ret
+
+    count_tot = 0
+    for iev in range(len(counts)):
+        offsets_new[iev] = count_tot
+        offsets_new[iev+1] = count_tot + counts[iev]
+        count_tot += counts[iev] 
+
+"""
+For all events (N), mask the objects in the first collection (M1) if they are closer than dr2 to any object in the second collection (M2).
+
+    etas1: etas of the first object, array of (M1, )
+    phis1: phis of the first object, array of (M1, )
+    mask1: mask (enabled) of the first object, array of (M1, )
+    offsets1: offsets of the first object, array of (N, )
+
+    etas2: etas of the second object, array of (M2, )
+    phis2: phis of the second object, array of (M2, )
+    mask2: mask (enabled) of the second object, array of (M2, )
+    offsets2: offsets of the second object, array of (N, )
+    
+    mask_out: output mask, array of (M1, )
+
+"""
+@cuda.jit
+def mask_deltar_first_cudakernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2, offsets2, dr2, mask_out):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    
+    for iev in range(xi, len(offsets1)-1, xstride):
+        a1 = np.uint64(offsets1[iev])
+        b1 = np.uint64(offsets1[iev+1])
+        
+        a2 = np.uint64(offsets2[iev])
+        b2 = np.uint64(offsets2[iev+1])
+        
+        for idx1 in range(a1, b1):
+            if not mask1[idx1]:
+                continue
+                
+            eta1 = np.float32(etas1[idx1])
+            phi1 = np.float32(phis1[idx1])
+            for idx2 in range(a2, b2):
+                if not mask2[idx2]:
+                    continue
+                eta2 = np.float32(etas2[idx2])
+                phi2 = np.float32(phis2[idx2])
+                
+                deta = abs(eta1 - eta2)
+                dphi = phi1 - phi2 + math.pi
+                while dphi > 2*math.pi:
+                    dphi -= 2*math.pi
+                dphi -= math.pi
+                
+                #if first object is closer than dr2, mask element will be *disabled*
+                passdr = ((deta**2 + dphi**2) < dr2)
+                mask_out[idx1] = mask_out[idx1] | passdr
+
+# Kernel wrappers
+
+def searchsorted(arr, vals, side="right"):
+    """
+    Find indices to insert vals into arr to preserve order.
+    """
+    ret = cupy.zeros_like(vals, dtype=cupy.int32)
+    if side == "right":
+        searchsorted_kernel_right[32, 1024](vals, arr, ret)
+    elif side == "left":
+        searchsorted_kernel_left[32, 1024](vals, ret, arr)
+    cuda.synchronize()
+    return ret 
+
 def broadcast(content, offsets, out):
     broadcast_cudakernel[32,1024](content, offsets, out)
     cuda.synchronize()
@@ -379,56 +466,6 @@ def set_in_offsets(content, offsets, indices, target, mask_rows, mask_content):
     assert(offsets.shape[0]-1 == mask_rows.shape[0])
     set_in_offsets_cudakernel[32, 1024](content, offsets, indices, target, mask_rows, mask_content)
     cuda.synchronize()
-
-"""
-For all events (N), mask the objects in the first collection (M1) if they are closer than dr2 to any object in the second collection (M2).
-
-    etas1: etas of the first object, array of (M1, )
-    phis1: phis of the first object, array of (M1, )
-    mask1: mask (enabled) of the first object, array of (M1, )
-    offsets1: offsets of the first object, array of (N, )
-
-    etas2: etas of the second object, array of (M2, )
-    phis2: phis of the second object, array of (M2, )
-    mask2: mask (enabled) of the second object, array of (M2, )
-    offsets2: offsets of the second object, array of (N, )
-    
-    mask_out: output mask, array of (M1, )
-
-"""
-@cuda.jit
-def mask_deltar_first_cudakernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2, offsets2, dr2, mask_out):
-    xi = cuda.grid(1)
-    xstride = cuda.gridsize(1)
-    
-    for iev in range(xi, len(offsets1)-1, xstride):
-        a1 = np.uint64(offsets1[iev])
-        b1 = np.uint64(offsets1[iev+1])
-        
-        a2 = np.uint64(offsets2[iev])
-        b2 = np.uint64(offsets2[iev+1])
-        
-        for idx1 in range(a1, b1):
-            if not mask1[idx1]:
-                continue
-                
-            eta1 = np.float32(etas1[idx1])
-            phi1 = np.float32(phis1[idx1])
-            for idx2 in range(a2, b2):
-                if not mask2[idx2]:
-                    continue
-                eta2 = np.float32(etas2[idx2])
-                phi2 = np.float32(phis2[idx2])
-                
-                deta = abs(eta1 - eta2)
-                dphi = phi1 - phi2 + math.pi
-                while dphi > 2*math.pi:
-                    dphi -= 2*math.pi
-                dphi -= math.pi
-                
-                #if first object is closer than dr2, mask element will be *disabled*
-                passdr = ((deta**2 + dphi**2) < dr2)
-                mask_out[idx1] = mask_out[idx1] | passdr
                 
 def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
     assert(mask1.shape == objs1.eta.shape)
@@ -504,53 +541,15 @@ def histogram_from_vector_several(variables, weights, mask):
     out_w2_separated = [cupy.asnumpy(out_w2[i, 0:nbins[i]-1]) for i in range(num_histograms)]
     return out_w_separated, out_w2_separated, all_bins
 
-@cuda.jit
-def get_bin_contents_cudakernel(values, edges, contents, out):
-    xi = cuda.grid(1)
-    xstride = cuda.gridsize(1)
-    for i in range(xi, len(values), xstride):
-        v = values[i]
-        ibin = searchsorted_devfunc_right(edges, v)
-        if ibin>=0 and ibin < len(contents):
-            out[i] = contents[ibin]
-
 def get_bin_contents(values, edges, contents, out):
     assert(values.shape == out.shape)
     assert(edges.shape[0] == contents.shape[0]+1)
     get_bin_contents_cudakernel[32, 1024](values, edges, contents, out)
 
-@cuda.jit
-def copyto_dst_indices_cudakernel(dst, src, inds_dst):
-    xi = cuda.grid(1)
-    xstride = cuda.gridsize(1)
-    for i1 in range(xi, len(src), xstride):
-        i2 = inds_dst[i1] 
-        dst[i2] = src[i1]
-
 def copyto_dst_indices(dst, src, inds_dst):
     assert(len(inds_dst) == len(src))
     copyto_dst_indices_cudakernel[32, 1024](dst, src, inds_dst)
     cuda.synchronize()
-
-@cuda.jit
-def compute_new_offsets_cudakernel(offsets_old, mask_objects, counts, offsets_new):
-    xi = cuda.grid(1)
-    xstride = cuda.gridsize(1)
-
-    for iev in range(xi, len(offsets_old)-1, xstride):
-        start = offsets_old[iev]
-        end = offsets_old[iev + 1]
-        ret = 0
-        for ielem in range(start, end):
-            if mask_objects[ielem]:
-                ret += 1
-            counts[iev] = ret
-
-    count_tot = 0
-    for iev in range(len(counts)):
-        offsets_new[iev] = count_tot
-        offsets_new[iev+1] = count_tot + counts[iev]
-        count_tot += counts[iev] 
 
 def compute_new_offsets(offsets_old, mask_objects, offsets_new):
     assert(len(offsets_old) == len(offsets_new))

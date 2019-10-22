@@ -4,13 +4,18 @@
 
 # hepaccelerate
 
-Accelerated array analysis on flat ROOT data. Process 1 billion events to histograms in minutes on a single workstation.
-Weighted histograms, jet-lepton deltaR matching and more! Works on both the CPU and GPU!
+Simple example kernels with Numba for data analysis with jagged arrays. You can use these to run a full HEP analysis on a billion events to histograms in minutes on a single workstation. Weighted histograms, jet-lepton deltaR matching and more! Works on both the CPU and GPU!
+
+**Under active development and use by a few CMS analyses!**
 
 <p float="left">
   <img src="images/kernel_benchmarks.png" alt="Kernel benchmarks" width="300"/>
   <img src="images/analysis_scaling.png" alt="Analysis scaling" width="300"/>
 </p>
+
+More details are available:
+- writeup: https://arxiv.org/abs/1906.06242v2
+- PyHEP 2019 talk: https://indico.cern.ch/event/833895/contributions/3577804/attachments/1927026/3192574/2019_10_15_pyhep.pdf
 
 ## Installation
 
@@ -24,14 +29,31 @@ Required python libraries:
  - awkward-array
  - numba (>0.43)
 
-Optional libraries for CUDA acceleration:
+Optional libraries:
  - cupy
  - cudatoolkit
+ - dask
 
 ## Documentation
 This code consists of two parts which can be used independently:
   - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](hepaccelerate/backend_cpu.py) and [backend_cuda.py](hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
+
+## Kernels
+
+We have implemented the following kernels for both the CPU and CUDA backends:
+  - `min_in_offsets(struct, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
+  - `max_in_offsets(struct, content, mask_rows, mask_content)`: as above, but find the maximum
+  - `prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None)`: compute the product in a jagged array
+  - `set_in_offsets(content, offsets, indices, target, mask_rows, mask_content)`: set the indexed value in a jagged array to a target
+  - `get_in_offsets(content, offsets, indices, mask_rows, mask_content)`:   retrieve the indexed values in a jagged array, e.g. get the leading jet pT
+  - `compute_new_offsets(offsets_old, mask_objects, offsets_new)`: given an   awkward offset array and a mask, create an offset array of the unmasked elements
+  - `searchsorted(bins, vals, side="left")`: 1-dimensional search in a sorted   array
+  - `histogram_from_vector(data, weights, bins, mask=None)`: fill a 1-dimensional weighted histogram with arbitrary sorted bins, possibly using a mask
+  - `histogram_from_vector_several(variables, weights, mask)`: fill several   histograms simultaneously based on `variables=[(data0, bins0), ...]`
+  - `get_bin_contents(values, edges, contents, out)`: look up the bin contents of   a histogram based on a vector of values 
+  - `select_muons_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
+  - `mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
 
 ## Usage
 
