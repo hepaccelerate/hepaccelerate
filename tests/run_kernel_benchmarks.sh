@@ -9,8 +9,7 @@ function run() {
     export HEPACCELERATE_CUDA=$2
     export PYTHONPATH=.
     export CUDA_VISIBLE_DEVICES=0
-    export NUMBAPRO_NVVM=/usr/local/cuda/nvvm/lib64/libnvvm.so
-    export NUMBAPRO_LIBDEVICE=/usr/local/cuda/nvvm/libdevice/
+    export NUM_DATASETS=5
     singularity exec --nv $SINGULARITY_IMAGE python3 tests/kernel_test.py
 }
 

@@ -12,7 +12,8 @@ from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 import uproot
 
 USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
-    
+num_datasets = int(os.environ.get("NUM_DATASETS", 1))
+
 def download_file(filename, url):
     """
     Download an URL to a file
@@ -51,7 +52,7 @@ class TestKernels(unittest.TestCase):
         self.dataset = dataset
 
     @staticmethod
-    def load_dataset(numpy_lib):
+    def load_dataset(numpy_lib, num_datasets):
         print("loading dataset")
         download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root")
         datastructures = {
@@ -93,7 +94,9 @@ class TestKernels(unittest.TestCase):
                 ('MET_CovYY', 'float32'),
             ]
         }
-        dataset = Dataset("nanoaod", ["./data/nanoaod_test.root"], datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
+        dataset = Dataset(
+            "nanoaod", num_datasets*["./data/nanoaod_test.root"],
+            datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
       
         try:
             dataset.from_cache()
@@ -297,6 +300,6 @@ class TestKernels(unittest.TestCase):
         
         return ret 
 
-dataset = TestKernels.load_dataset(TestKernels.NUMPY_LIB)
+dataset = TestKernels.load_dataset(TestKernels.NUMPY_LIB, num_datasets)
 if __name__ == "__main__":
     unittest.main()

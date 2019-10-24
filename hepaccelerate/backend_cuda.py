@@ -154,13 +154,13 @@ def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
                 cuda.atomic.add(out_w2, bin_idx_histo, wi**2)
 
 @cuda.jit
-def select_opposite_sign_muons_cudakernel(muon_charges_content, muon_charges_offsets, content_mask_in, content_mask_out):
+def select_opposite_sign_cudakernel(charges_offsets, charges_content, content_mask_in, content_mask_out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
     
-    for iev in range(xi, muon_charges_offsets.shape[0]-1, xstride):
-        start = np.uint64(muon_charges_offsets[iev])
-        end = np.uint64(muon_charges_offsets[iev + 1])
+    for iev in range(xi, charges_offsets.shape[0]-1, xstride):
+        start = np.uint64(charges_offsets[iev])
+        end = np.uint64(charges_offsets[iev + 1])
         
         ch1 = np.int32(0)
         idx1 = np.uint64(0)
@@ -172,11 +172,11 @@ def select_opposite_sign_muons_cudakernel(muon_charges_content, muon_charges_off
                 continue
                 
             if idx1 == 0 and idx2 == 0:
-                ch1 = muon_charges_content[imuon]
+                ch1 = charges_content[imuon]
                 idx1 = imuon
                 continue
             else:
-                ch2 = muon_charges_content[imuon]
+                ch2 = charges_content[imuon]
                 if (ch2 != ch1):
                     idx2 = imuon
                     content_mask_out[idx1] = 1
@@ -185,7 +185,7 @@ def select_opposite_sign_muons_cudakernel(muon_charges_content, muon_charges_off
     return
 
 @cuda.jit
-def sum_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
+def sum_in_offsets_cudakernel(offsets, content, mask_rows, mask_content, out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -200,7 +200,7 @@ def sum_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
                 out[iev] += content[ielem]
 
 @cuda.jit
-def prod_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
+def prod_in_offsets_cudakernel(offsets, content, mask_rows, mask_content, out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -215,7 +215,7 @@ def prod_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
                 out[iev] *= content[ielem]
             
 @cuda.jit
-def max_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
+def max_in_offsets_cudakernel(offsets, content, mask_rows, mask_content, out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -238,7 +238,7 @@ def max_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
 
         
 @cuda.jit
-def min_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
+def min_in_offsets_cudakernel(offsets, content, mask_rows, mask_content, out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -260,7 +260,7 @@ def min_in_offsets_cudakernel(content, offsets, mask_rows, mask_content, out):
         out[iev] = accum
 
 @cuda.jit
-def get_in_offsets_cudakernel(content, offsets, indices, mask_rows, mask_content, out):
+def get_in_offsets_cudakernel(offsets, content, indices, mask_rows, mask_content, out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -280,7 +280,7 @@ def get_in_offsets_cudakernel(content, offsets, indices, mask_rows, mask_content
                     index_to_get += 1
 
 @cuda.jit
-def set_in_offsets_cudakernel(content, offsets, indices, target, mask_rows, mask_content):
+def set_in_offsets_cudakernel(offsets, content, indices, target, mask_rows, mask_content):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -300,7 +300,7 @@ def set_in_offsets_cudakernel(content, offsets, indices, target, mask_rows, mask
                     index_to_set += 1
 
 @cuda.jit
-def broadcast_cudakernel(content, offsets, out):
+def broadcast_cudakernel(offsets, content, out):
     xi = cuda.grid(1)
     xstride = cuda.gridsize(1)
 
@@ -398,6 +398,13 @@ def mask_deltar_first_cudakernel(etas1, phis1, mask1, offsets1, etas2, phis2, ma
                 passdr = ((deta**2 + dphi**2) < dr2)
                 mask_out[idx1] = mask_out[idx1] | passdr
 
+def make_masks(offsets, content, mask_rows, mask_content):
+    if mask_rows is None:
+        mask_rows = cupy.ones(len(offsets) - 1, dtype=cupy.bool)
+    if mask_content is None:
+        mask_content = cupy.ones(len(content), dtype=cupy.bool)
+    return mask_rows, mask_content
+
 # Kernel wrappers
 
 def searchsorted(arr, vals, side="right"):
@@ -412,70 +419,77 @@ def searchsorted(arr, vals, side="right"):
     cuda.synchronize()
     return ret 
 
-def broadcast(content, offsets, out):
-    broadcast_cudakernel[32,1024](content, offsets, out)
+def broadcast(offsets, content, out):
+    broadcast_cudakernel[32,1024](offsets, content, out)
     cuda.synchronize()
 
-def sum_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
+def sum_in_offsets(offsets, content, mask_rows=None, mask_content=None, dtype=None):
     if not dtype:
         dtype = content.dtype
-    sum_offsets = cupy.zeros(len(struct.offsets) - 1, dtype=dtype)
-    sum_in_offsets_cudakernel[32, 1024](content, struct.offsets, mask_rows, mask_content, sum_offsets)
+    sum_offsets = cupy.zeros(len(offsets) - 1, dtype=dtype)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    sum_in_offsets_cudakernel[32, 1024](offsets, content, mask_rows, mask_content, sum_offsets)
     cuda.synchronize()
     return sum_offsets
 
-def prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
+def prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=None):
     if not dtype:
         dtype = content.dtype
-    ret = cupy.ones(len(struct.offsets) - 1, dtype=dtype)
-    prod_in_offsets_cudakernel[32, 1024](content, struct.offsets, mask_rows, mask_content, ret)
+    ret = cupy.ones(len(offsets) - 1, dtype=dtype)
+    prod_in_offsets_cudakernel[32, 1024](offsets, content, mask_rows, mask_content, ret)
     cuda.synchronize()
     return ret
 
-def max_in_offsets(struct, content, mask_rows, mask_content):
-    max_offsets = cupy.zeros(len(struct.offsets) - 1, dtype=content.dtype)
-    max_in_offsets_cudakernel[32, 1024](content, struct.offsets, mask_rows, mask_content, max_offsets)
+def max_in_offsets(offsets, content, mask_rows=None, mask_content=None):
+    max_offsets = cupy.zeros(len(offsets) - 1, dtype=content.dtype)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    max_in_offsets_cudakernel[32, 1024](offsets, content, mask_rows, mask_content, max_offsets)
     cuda.synchronize()
     return max_offsets
 
-def min_in_offsets(struct, content, mask_rows, mask_content):
-    max_offsets = cupy.zeros(len(struct.offsets) - 1, dtype=content.dtype)
-    min_in_offsets_cudakernel[32, 1024](content, struct.offsets, mask_rows, mask_content, max_offsets)
+def min_in_offsets(offsets, content, mask_rows=None, mask_content=None):
+    max_offsets = cupy.zeros(len(offsets) - 1, dtype=content.dtype)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    min_in_offsets_cudakernel[32, 1024](offsets, content, mask_rows, mask_content, max_offsets)
     cuda.synchronize()
     return max_offsets
 
-def select_muons_opposite_sign(muons, in_mask):
-    out_mask = cupy.invert(muons.make_mask())
-    select_opposite_sign_muons_cudakernel[32,1024](muons.charge, muons.offsets, in_mask, out_mask)
+def select_opposite_sign(offsets, charges, in_mask):
+    out_mask = cupy.zeros_like(charges, dtype=cupy.bool)
+    select_opposite_sign_cudakernel[32,1024](offsets, charges, in_mask, out_mask)
     cuda.synchronize()
     return out_mask
 
-def get_in_offsets(content, offsets, indices, mask_rows, mask_content):
+def get_in_offsets(offsets, content, indices, mask_rows=None, mask_content=None):
     assert(content.shape == mask_content.shape)
     assert(offsets.shape[0] - 1 == indices.shape[0])
     assert(offsets.shape[0] - 1 == mask_rows.shape[0])
     out = cupy.zeros(len(offsets) - 1, dtype=content.dtype)
-    get_in_offsets_cudakernel[32, 1024](content, offsets, indices, mask_rows, mask_content, out)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    get_in_offsets_cudakernel[32, 1024](offsets, content, indices, mask_rows, mask_content, out)
     cuda.synchronize()
     return out
 
-def set_in_offsets(content, offsets, indices, target, mask_rows, mask_content):
+def set_in_offsets(offsets, content, indices, target, mask_rows=None, mask_content=None):
     assert(content.shape == mask_content.shape)
     assert(offsets.shape[0]-1 == indices.shape[0])
     assert(offsets.shape[0]-1 == target.shape[0])
     assert(offsets.shape[0]-1 == mask_rows.shape[0])
-    set_in_offsets_cudakernel[32, 1024](content, offsets, indices, target, mask_rows, mask_content)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    set_in_offsets_cudakernel[32, 1024](offsets, content, indices, target, mask_rows, mask_content)
     cuda.synchronize()
                 
 def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
-    assert(mask1.shape == objs1.eta.shape)
-    assert(mask2.shape == objs2.eta.shape)
-    assert(objs1.offsets.shape == objs2.offsets.shape)
+    assert(mask1.shape == objs1["eta"].shape)
+    assert(mask2.shape == objs2["eta"].shape)
+    assert(mask1.shape == objs1["phi"].shape)
+    assert(mask2.shape == objs2["phi"].shape)
+    assert(objs1["offsets"].shape == objs2["offsets"].shape)
     
-    mask_out = cupy.zeros_like(objs1.eta, dtype=cupy.bool)
+    mask_out = cupy.zeros_like(objs1["eta"], dtype=cupy.bool)
     mask_deltar_first_cudakernel[32, 1024](
-        objs1.eta, objs1.phi, mask1, objs1.offsets,
-        objs2.eta, objs2.phi, mask2, objs2.offsets,
+        objs1["eta"], objs1["phi"], mask1, objs1["offsets"],
+        objs2["eta"], objs2["phi"], mask2, objs2["offsets"],
         drcut**2, mask_out
     )
     cuda.synchronize()

@@ -198,7 +198,7 @@ Args:
     out: output array, M elements
 """
 @numba.njit(parallel=True, fastmath=True)
-def sum_in_offsets_kernel(content, offsets, mask_rows, mask_content, out):
+def sum_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
     assert(len(offsets) - 1 == len(mask_rows))
     assert(len(out) == len(offsets) - 1)
@@ -214,7 +214,7 @@ def sum_in_offsets_kernel(content, offsets, mask_rows, mask_content, out):
                 out[iev] += content[ielem]
 
 @numba.njit(parallel=True, fastmath=True)
-def prod_in_offsets_kernel(content, offsets, mask_rows, mask_content, out):
+def prod_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
     assert(len(offsets) - 1 == len(mask_rows))
     assert(len(out) == len(offsets) - 1)
@@ -239,10 +239,10 @@ Args:
     out: output array, M elements
 """
 @numba.njit(parallel=True, fastmath=True)
-def max_in_offsets_kernel(content, offsets, mask_rows, mask_content, out):
+def max_in_offsets_kernel(offsets, content, out, mask_rows=None, mask_content=None):
+    assert(len(out) == len(offsets) - 1)
     assert(len(content) == len(mask_content))
     assert(len(offsets) - 1 == len(mask_rows))
-    assert(len(out) == len(offsets) - 1)
 
     for iev in numba.prange(offsets.shape[0]-1):
         if not mask_rows[iev]:
@@ -271,7 +271,7 @@ Args:
     out: output array, M elements
 """
 @numba.njit(parallel=True, fastmath=True)
-def min_in_offsets_kernel(content, offsets, mask_rows, mask_content, out):
+def min_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
     assert(len(offsets) - 1 == len(mask_rows))
     assert(len(out) == len(offsets) - 1)
@@ -305,7 +305,7 @@ Args:
     out: output array, M elements
 """
 @numba.njit(parallel=True, fastmath=True)
-def get_in_offsets_kernel(content, offsets, indices, mask_rows, mask_content, out):
+def get_in_offsets_kernel(offsets, content, indices, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
     assert(len(offsets) - 1 == len(mask_rows))
     assert(len(offsets) - 1 == len(indices))
@@ -339,7 +339,7 @@ Args:
     mask_content: data elements to consider, N elements 
 """
 @numba.njit(parallel=True, fastmath=True)
-def set_in_offsets_kernel(content, offsets, indices, target, mask_rows, mask_content):
+def set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_content):
     for iev in numba.prange(offsets.shape[0]-1):
         if not mask_rows[iev]:
             continue
@@ -356,7 +356,7 @@ def set_in_offsets_kernel(content, offsets, indices, target, mask_rows, mask_con
                     index_to_set += 1
 
 @numba.njit(parallel=True, fastmath=True)
-def broadcast(content, offsets, out):
+def broadcast(offsets, content, out):
     for iev in numba.prange(offsets.shape[0]-1):
         start = offsets[iev]
         end = offsets[iev + 1]
@@ -403,7 +403,10 @@ def mask_deltar_first_kernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2,
                 phi2 = np.float32(phis2[idx2])
                 
                 deta = abs(eta1 - eta2)
-                dphi = np.mod(phi1 - phi2 + math.pi, 2*math.pi) - math.pi
+                dphi = phi1 - phi2 + math.pi
+                while dphi > 2*math.pi:
+                    dphi -= 2*math.pi
+                dphi -= math.pi
                 
                 passdr = ((deta**2 + dphi**2) < dr2)
                 mask_out[idx1] = mask_out[idx1] | passdr
@@ -453,30 +456,40 @@ def compute_new_offsets(offsets_old, mask_objects, offsets_new):
         offsets_new[iev+1] = count_tot + counts[iev]
         count_tot += counts[iev] 
 
+def make_masks(offsets, content, mask_rows, mask_content):
+    if mask_rows is None:
+        mask_rows = np.ones(len(offsets) - 1, dtype=np.bool)
+    if mask_content is None:
+        mask_content = np.ones(len(content), dtype=np.bool)
+    return mask_rows, mask_content
 
 #User-friendly functions that call the kernels, but create the output arrays themselves
-def sum_in_offsets(offsets, content, mask_rows, mask_content, dtype=None):
+def sum_in_offsets(offsets, content, mask_rows=None, mask_content=None, dtype=None):
     if not dtype:
         dtype = content.dtype
     res = np.zeros(len(offsets) - 1, dtype=dtype)
-    sum_in_offsets_kernel(content, offsets, mask_rows, mask_content, res)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    sum_in_offsets_kernel(offsets, content, mask_rows, mask_content, res)
     return res
 
-def prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=None):
+def prod_in_offsets(offsets, content, mask_rows=None, mask_content=None, dtype=None):
     if not dtype:
         dtype = content.dtype
     res = np.ones(len(offsets) - 1, dtype=dtype)
-    prod_in_offsets_kernel(content, offsets, mask_rows, mask_content, res)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    prod_in_offsets_kernel(offsets, content, mask_rows, mask_content, res)
     return res
 
-def max_in_offsets(offsets, content, mask_rows, mask_content):
+def max_in_offsets(offsets, content, mask_rows=None, mask_content=None):
     max_offsets = np.zeros(len(offsets) - 1, dtype=content.dtype)
-    max_in_offsets_kernel(content, offsets, mask_rows, mask_content, max_offsets)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    max_in_offsets_kernel(offsets, content, max_offsets, mask_rows, mask_content)
     return max_offsets
 
-def min_in_offsets(offsets, content, mask_rows, mask_content):
+def min_in_offsets(offsets, content, mask_rows=None, mask_content=None):
     max_offsets = np.zeros(len(offsets) - 1, dtype=content.dtype)
-    min_in_offsets_kernel(content, offsets, mask_rows, mask_content, max_offsets)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    min_in_offsets_kernel(offsets, content, mask_rows, mask_content, max_offsets)
     return max_offsets
 
 def select_opposite_sign(offsets, charges, in_mask):
@@ -484,13 +497,15 @@ def select_opposite_sign(offsets, charges, in_mask):
     select_opposite_sign_kernel(charges, offsets, in_mask, out_mask)
     return out_mask
 
-def get_in_offsets(offsets, content, indices, mask_rows, mask_content):
+def get_in_offsets(offsets, content, indices, mask_rows=None, mask_content=None):
     out = np.zeros(len(offsets) - 1, dtype=content.dtype)
-    get_in_offsets_kernel(content, offsets, indices, mask_rows, mask_content, out)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    get_in_offsets_kernel(offsets, content, indices, mask_rows, mask_content, out)
     return out
 
-def set_in_offsets(offsets, content, indices, target, mask_rows, mask_content):
-    set_in_offsets_kernel(content, offsets, indices, target, mask_rows, mask_content)
+def set_in_offsets(offsets, content, indices, target, mask_rows=None, mask_content=None):
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
+    set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_content)
 
 ##
 ## Masks the objects in objs1 that are closer than drcut to objects in objs2.
