@@ -133,7 +133,7 @@ class TestDataset(unittest.TestCase):
         mu_pt_pass = mu_pt > 20
         mask_rows = np.ones(mu.numevents(), dtype=np.bool)
         mask_content = np.ones(mu.numobjects(), dtype=np.bool)
-        ret = TestDataset.ha.sum_in_offsets(mu, mu_pt_pass, mask_rows, mask_content, dtype=np.int8) 
+        ret = TestDataset.ha.sum_in_offsets(mu.offsets, mu_pt_pass, mask_rows, mask_content, dtype=np.int8) 
         return ret
     
     def test_dataset_map(self):
@@ -181,7 +181,7 @@ class TestDataset(unittest.TestCase):
        
         #compute a per-event jet energy sum taking into account the offsets
         jet_sume = TestDataset.NUMPY_LIB.hstack([TestDataset.ha.sum_in_offsets(
-            ds_multi.structs["Jet"][i],
+            ds_multi.structs["Jet"][i].offsets,
             ds_multi.structs["Jet"][i]["E"],
             TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][i].numevents(), dtype=TestDataset.NUMPY_LIB.bool),
             TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][i].numobjects(), dtype=TestDataset.NUMPY_LIB.bool)
@@ -195,7 +195,7 @@ class TestDataset(unittest.TestCase):
         assert(len(ds_multi.structs["Jet"]) == 1)
         assert(ds_multi.num_objects_loaded("Jet") == njet)
         jet_sume_merged = TestDataset.ha.sum_in_offsets(
-            ds_multi.structs["Jet"][0],
+            ds_multi.structs["Jet"][0].offsets,
             ds_multi.structs["Jet"][0]["E"],
             TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][0].numevents(), dtype=TestDataset.NUMPY_LIB.bool),
             TestDataset.NUMPY_LIB.ones(ds_multi.structs["Jet"][0].numobjects(), dtype=TestDataset.NUMPY_LIB.bool)

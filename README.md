@@ -41,25 +41,52 @@ This code consists of two parts which can be used independently:
 
 ## Kernels
 
-The kernels can be used independently by doing
+The kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray`
 ```python
-#replace with backend_cuda for GPU support
-import hepaccelerate.backend_cpu as ha
+import uproot, os
+use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0))==1
+
+if use_cuda:
+  import hepaccelerate.backend_cuda as ha
+  import cupy as np
+else:
+  import hepaccelerate.backend_cpu as ha
+  import numpy as np
+
+fi = uproot.open("./data/nanoaod_test.root")
+tt = fi.get("aod2nanoaod/Events")
+jet_eta = tt.array("Jet_eta")
+jet_phi = tt.array("Jet_phi")
+jet_pt = tt.array("Jet_pt")
+
+lep_eta = tt.array("Muon_eta")
+lep_phi = tt.array("Muon_phi")
+lep_pt = tt.array("Muon_pt")
+
+jets = {"pt": np.array(jet_pt.content), "eta": np.array(jet_eta.content), "phi": np.array(jet_phi.content), "offsets": np.array(jet_pt.offsets)}
+sel_jets = jet_pt.content > 30.0
+
+leptons = {"pt": np.array(lep_pt.content), "eta": np.array(lep_eta.content), "phi": np.array(lep_phi.content), "offsets": np.array(lep_pt.offsets)}
+sel_leptons = lep_pt.content > 20.0
+
+#run multithreaded CPU or GPU kernel
+masked_jets = ha.mask_deltar_first(jets, sel_jets, leptons, sel_leptons, 0.5)
+print("kept {0} jets out of {1}".format(masked_jets.sum(), len(masked_jets)))
 ```
 
 We have implemented the following kernels for both the CPU and CUDA backends:
-  - `ha.min_in_offsets(struct, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
-  - `ha.max_in_offsets(struct, content, mask_rows, mask_content)`: as above, but find the maximum
-  - `ha.prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None)`: compute the product in a jagged array
+  - `ha.min_in_offsets(offsets, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
+  - `ha.max_in_offsets(offsets, content, mask_rows, mask_content)`: as above, but find the maximum
+  - `ha.prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=None)`: compute the product in a jagged array
   - `ha.set_in_offsets(content, offsets, indices, target, mask_rows, mask_content)`: set the indexed value in a jagged array to a target
-  - `ha.get_in_offsets(content, offsets, indices, mask_rows, mask_content)`:   retrieve the indexed values in a jagged array, e.g. get the leading jet pT
+  - `ha.get_in_offsets(offsets, content, indices, mask_rows, mask_content)`:   retrieve the indexed values in a jagged array, e.g. get the leading jet pT
   - `ha.compute_new_offsets(offsets_old, mask_objects, offsets_new)`: given an   awkward offset array and a mask, create an offset array of the unmasked elements
-  - `ha.searchsorted(bins, vals, side="left")`: 1-dimensional search in a sorted   array
+  - `ha.searchsorted(bins, vals, side="left")`: 1-dimensional search in a sorted array
   - `ha.histogram_from_vector(data, weights, bins, mask=None)`: fill a 1-dimensional weighted histogram with arbitrary sorted bins, possibly using a mask
   - `ha.histogram_from_vector_several(variables, weights, mask)`: fill several   histograms simultaneously based on `variables=[(data0, bins0), ...]`
   - `ha.get_bin_contents(values, edges, contents, out)`: look up the bin contents of   a histogram based on a vector of values 
-  - `ha.select_muons_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
-  - `ha.mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
+  - `ha.select_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
+  - `ha.mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects defined by eta, phi and offsets, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
 
 ## Usage
 

@@ -147,41 +147,42 @@ def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
 """Given a vector of muon charges and event offsets, masks the first two opposite sign muons.
 
 Args:
-    muon_charges_content: Array of muon charges (N-elem)
-    muon_charges_offsets: Array of event offsets
+    charges_content: Array of muon charges (N-elem)
+    charges_offsets: Array of event offsets
     content_mask_in: Mask of muons to be used for this kernel (N-elem)
     content_mask_out: Mask where the passing muons will be set to True (N-elem)
 """
 @numba.njit(parallel=True, fastmath=True)
-def select_opposite_sign_muons_kernel(muon_charges_content, muon_charges_offsets, content_mask_in, content_mask_out):
-    assert(len(muon_charges_content) == len(content_mask_in))
-    assert(len(muon_charges_content) == len(content_mask_out))
+def select_opposite_sign_kernel(charges_content, charges_offsets, content_mask_in, content_mask_out):
+    assert(len(charges_content) == len(content_mask_in))
+    assert(len(charges_content) == len(content_mask_out))
 
-    for iev in numba.prange(muon_charges_offsets.shape[0]-1):
-        start = np.uint64(muon_charges_offsets[iev])
-        end = np.uint64(muon_charges_offsets[iev + 1])
+    for iev in numba.prange(charges_offsets.shape[0]-1):
+        start = np.uint64(charges_offsets[iev])
+        end = np.uint64(charges_offsets[iev + 1])
         
         ch1 = np.float32(0.0)
         idx1 = np.uint64(0)
         ch2 = np.float32(0.0)
         idx2 = np.uint64(0)
         
-        for imuon in range(start, end):
+        #loop over objects (e.g. muons)
+        for iobj in range(start, end):
             #only consider muons that pass
-            if not content_mask_in[imuon]:
+            if not content_mask_in[iobj]:
                 continue
             
-            #First muon in event
+            #First object in event
             if idx1 == 0 and idx2 == 0:
-                ch1 = muon_charges_content[imuon]
-                idx1 = imuon
+                ch1 = charges_content[iobj]
+                idx1 = iobj
                 continue
 
-            #Next mouns
+            #Rest of the objects
             else:
-                ch2 = muon_charges_content[imuon]
+                ch2 = charges_content[iobj]
                 if (ch2 != ch1):
-                    idx2 = imuon
+                    idx2 = iobj
                     content_mask_out[idx1] = True
                     content_mask_out[idx2] = True
                     break
@@ -454,57 +455,91 @@ def compute_new_offsets(offsets_old, mask_objects, offsets_new):
 
 
 #User-friendly functions that call the kernels, but create the output arrays themselves
-def sum_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
+def sum_in_offsets(offsets, content, mask_rows, mask_content, dtype=None):
     if not dtype:
         dtype = content.dtype
-    res = np.zeros(len(struct.offsets) - 1, dtype=dtype)
-    sum_in_offsets_kernel(content, struct.offsets, mask_rows, mask_content, res)
+    res = np.zeros(len(offsets) - 1, dtype=dtype)
+    sum_in_offsets_kernel(content, offsets, mask_rows, mask_content, res)
     return res
 
-def prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None):
+def prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=None):
     if not dtype:
         dtype = content.dtype
-    res = np.ones(len(struct.offsets) - 1, dtype=dtype)
-    prod_in_offsets_kernel(content, struct.offsets, mask_rows, mask_content, res)
+    res = np.ones(len(offsets) - 1, dtype=dtype)
+    prod_in_offsets_kernel(content, offsets, mask_rows, mask_content, res)
     return res
 
-def max_in_offsets(struct, content, mask_rows, mask_content):
-    max_offsets = np.zeros(len(struct.offsets) - 1, dtype=content.dtype)
-    max_in_offsets_kernel(content, struct.offsets, mask_rows, mask_content, max_offsets)
+def max_in_offsets(offsets, content, mask_rows, mask_content):
+    max_offsets = np.zeros(len(offsets) - 1, dtype=content.dtype)
+    max_in_offsets_kernel(content, offsets, mask_rows, mask_content, max_offsets)
     return max_offsets
 
-def min_in_offsets(struct, content, mask_rows, mask_content):
-    max_offsets = np.zeros(len(struct.offsets) - 1, dtype=content.dtype)
-    min_in_offsets_kernel(content, struct.offsets, mask_rows, mask_content, max_offsets)
+def min_in_offsets(offsets, content, mask_rows, mask_content):
+    max_offsets = np.zeros(len(offsets) - 1, dtype=content.dtype)
+    min_in_offsets_kernel(content, offsets, mask_rows, mask_content, max_offsets)
     return max_offsets
 
-def select_muons_opposite_sign(muons, in_mask):
-    out_mask = np.invert(muons.make_mask())
-    select_opposite_sign_muons_kernel(muons.charge, muons.offsets, in_mask, out_mask)
+def select_opposite_sign(offsets, charges, in_mask):
+    out_mask = np.zeros(len(charges), dtype=np.bool)
+    select_opposite_sign_kernel(charges, offsets, in_mask, out_mask)
     return out_mask
 
-def get_in_offsets(content, offsets, indices, mask_rows, mask_content):
+def get_in_offsets(offsets, content, indices, mask_rows, mask_content):
     out = np.zeros(len(offsets) - 1, dtype=content.dtype)
     get_in_offsets_kernel(content, offsets, indices, mask_rows, mask_content, out)
     return out
 
-def set_in_offsets(content, offsets, indices, target, mask_rows, mask_content):
+def set_in_offsets(offsets, content, indices, target, mask_rows, mask_content):
     set_in_offsets_kernel(content, offsets, indices, target, mask_rows, mask_content)
-                
+
+##
+## Masks the objects in objs1 that are closer than drcut to objects in objs2.
+##
+## :param      objs1:           The objects to mask (e.g. jets)
+## :type       objs1:           { "eta": array, "phi": array, "offsets": array }
+## :param      mask1:           The selected objects to consider
+## :type       mask1:           { array of bool }
+## :param      objs2:           The objects to mask against (e.g. leptons)
+## :type       objs2:           { "eta": array, "phi": array, "offsets": array }
+## :param      mask2:           The selected objects to consider (e.g. selected leptons)
+## :type       mask2:           { array of bool }
+## :param      drcut:           value of delta R
+## :type       drcut:           { float }
+##
+## :returns:   { mask for the objects in objs1 }
+## :rtype:     { array of bool }
+##
+## :raises     AssertionError:  { in case shapes do not match }
+##
 def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
-    assert(mask1.shape == objs1.eta.shape)
-    assert(mask2.shape == objs2.eta.shape)
-    assert(objs1.offsets.shape == objs2.offsets.shape)
+    assert(mask1.shape == objs1["eta"].shape)
+    assert(mask2.shape == objs2["eta"].shape)
+    assert(mask1.shape == objs1["phi"].shape)
+    assert(mask2.shape == objs2["phi"].shape)
+    assert(objs1["offsets"].shape == objs2["offsets"].shape)
     
-    mask_out = np.zeros_like(objs1.eta, dtype=np.bool)
+    mask_out = np.zeros_like(objs1["eta"], dtype=np.bool)
     mask_deltar_first_kernel(
-        objs1.eta, objs1.phi, mask1, objs1.offsets,
-        objs2.eta, objs2.phi, mask2, objs2.offsets,
+        objs1["eta"], objs1["phi"], mask1, objs1["offsets"],
+        objs2["eta"], objs2["phi"], mask2, objs2["offsets"],
         drcut**2, mask_out
     )
     mask_out = np.invert(mask_out)
     return mask_out
 
+##
+## Fills several arrays of the same length into several 1D histograms
+##
+## :param      variables:  Pairs of (data array, bins) to fill into histograms
+## :type       variables:  List of tuples (data array, bins)
+## :param      weights:    The per-sample weights
+## :type       weights:    array of floats
+## :param      mask:       Selected samples
+## :type       mask:       array of bools
+##
+## :returns:   weights, weights^2, bins of all the resulting histograms
+## :rtype:     (weights, weights^2, bins), where each is a list
+##
 def histogram_from_vector_several(variables, weights, mask):
     all_arrays = []
     all_bins = []
