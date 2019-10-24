@@ -10,7 +10,7 @@ else:
   import numpy as np
   np.asnumpy = np.array
 
-fi = uproot.open("./data/nanoaod_test.root")
+fi = uproot.open("data/nanoaod_test.root")
 tt = fi.get("aod2nanoaod/Events")
 jet_eta = tt.array("Jet_eta")
 jet_phi = tt.array("Jet_phi")
