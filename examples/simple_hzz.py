@@ -27,12 +27,12 @@ def analyze_data_function(data, parameters):
 
     mask_events = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
     mask_muons_passing_pt = muons.pt > parameters["muons_ptcut"]
-    num_muons_event = ha.sum_in_offsets(muons, mask_muons_passing_pt, mask_events, muons.masks["all"], NUMPY_LIB.int8)
+    num_muons_event = ha.sum_in_offsets(muons.offsets, mask_muons_passing_pt, mask_events, muons.masks["all"], NUMPY_LIB.int8)
     mask_events_dimuon = num_muons_event == 2
 
     #get the leading muon pt in events that have exactly two muons
     inds = NUMPY_LIB.zeros(num_events, dtype=NUMPY_LIB.int32)
-    leading_muon_pt = ha.get_in_offsets(muons.pt, muons.offsets, inds, mask_events_dimuon, mask_muons_passing_pt)
+    leading_muon_pt = ha.get_in_offsets(muons.offsets, muons.pt, inds, mask_events_dimuon, mask_muons_passing_pt)
 
     #compute a weighted histogram
     weights = NUMPY_LIB.ones(num_events, dtype=NUMPY_LIB.float32)

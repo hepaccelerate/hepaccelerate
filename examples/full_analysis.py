@@ -141,7 +141,7 @@ def get_selected_muons(muons, pt_cut_leading, pt_cut_subleading, aeta_cut, iso_c
 
     #select events with at least 1 good muon
     evs_1mu = ha.sum_in_offsets(
-        muons, selected_muons_leading, evs_all, muons.masks["all"]
+        muons.offsets, selected_muons_leading, evs_all, muons.masks["all"]
     ) >= 1
     
     return selected_muons, evs_1mu
@@ -168,7 +168,7 @@ def get_selected_electrons(electrons, pt_cut_leading, pt_cut_subleading, aeta_cu
     selected_electrons_leading = selected_electrons & passes_leading_pt
     
     ev_1el = ha.sum_in_offsets(
-        electrons, selected_electrons_leading, evs_all, electrons.masks["all"]
+        electrons.offsets, selected_electrons_leading, evs_all, electrons.masks["all"]
     ) >= 1
         
     return selected_electrons, ev_1el
@@ -184,7 +184,7 @@ def apply_lepton_corrections(leptons, mask_leptons, lepton_weights):
     #multiply the per-lepton weights for each event
     all_events = NUMPY_LIB.ones(leptons.numevents(), dtype=NUMPY_LIB.bool)
     corr_per_event = ha.prod_in_offsets(
-        leptons, corrs, all_events, mask_leptons
+        leptons.offsets, corrs, all_events, mask_leptons
     )
     
     return corr_per_event
@@ -210,12 +210,17 @@ def select_jets(jets, mu, el, selected_muons, selected_electrons, pt_cut, aeta_c
     
     selected_jets = passes_id & passes_aeta & passes_pt
 
+    jets_d = {"eta": jets.eta, "phi": jets.phi, "offsets": jets.offsets} 
     jets_pass_dr_mu = ha.mask_deltar_first(
-        jets, selected_jets, mu,
+        jets_d,
+        selected_jets,
+        {"eta": mu.eta, "phi": mu.phi, "offsets": mu.offsets},
         selected_muons, jet_lepton_dr_cut)
         
     jets_pass_dr_el = ha.mask_deltar_first(
-        jets, selected_jets, el,
+        jets_d,
+        selected_jets,
+        {"eta": el.eta, "phi": el.phi, "offsets": el.offsets},
         selected_electrons, jet_lepton_dr_cut)
     
     selected_jets_no_lepton = selected_jets & jets_pass_dr_mu & jets_pass_dr_el
@@ -343,10 +348,10 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     el.masks["selected"] = sel_el
     
     nmu = ha.sum_in_offsets(
-        mu, mu.masks["selected"], evs_all, mu.masks["all"], dtype=NUMPY_LIB.int32
+        mu.offsets, mu.masks["selected"], evs_all, mu.masks["all"], dtype=NUMPY_LIB.int32
     )
     nel = ha.sum_in_offsets(
-        el, el.masks["selected"], evs_all, el.masks["all"], dtype=NUMPY_LIB.int32
+        el.offsets, el.masks["selected"], evs_all, el.masks["all"], dtype=NUMPY_LIB.int32
     )
         
     #get contiguous arrays of the first two muons for all events
@@ -363,7 +368,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     weights_jet = {}
     for k in weights.keys():
         weights_jet[k] = NUMPY_LIB.zeros_like(jets.pt)
-        ha.broadcast(weights["nominal"], jets.offsets, weights_jet[k])
+        ha.broadcast(jets.offsets, weights["nominal"], weights_jet[k])
 
     all_jecs = [("nominal", "", None)]
     if ismc:
@@ -412,10 +417,10 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
         
         #compute the number of jets per event 
         njet = ha.sum_in_offsets(
-            jets, sel_jet, evs_all, jets.masks["all"], dtype=NUMPY_LIB.int32
+            jets.offsets, sel_jet, evs_all, jets.masks["all"], dtype=NUMPY_LIB.int32
         )
         nbjet = ha.sum_in_offsets(
-            jets, sel_bjet, evs_all, jets.masks["all"], dtype=NUMPY_LIB.int32
+            jets.offsets, sel_bjet, evs_all, jets.masks["all"], dtype=NUMPY_LIB.int32
         )
 
         inv_mass_3j = NUMPY_LIB.zeros(jets.numevents(), dtype=NUMPY_LIB.float32)
@@ -451,14 +456,14 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
         inds = NUMPY_LIB.zeros_like(evs_all, dtype=NUMPY_LIB.int32) 
         targets = NUMPY_LIB.ones_like(evs_all, dtype=NUMPY_LIB.int32) 
         inds[:] = 0
-        ha.set_in_offsets(first_two_jets, jets.offsets, inds, targets, selected_events, sel_jet)
+        ha.set_in_offsets(jets.offsets, first_two_jets, inds, targets, selected_events, sel_jet)
         inds[:] = 1
-        ha.set_in_offsets(first_two_jets, jets.offsets, inds, targets, selected_events, sel_jet)
+        ha.set_in_offsets(jets.offsets, first_two_jets, inds, targets, selected_events, sel_jet)
 
         #compute the invariant mass of the first two jets
         dijet_inv_mass, dijet_pt = compute_inv_mass(jets, selected_events, sel_jet & first_two_jets, use_cuda)
 
-        sumpt_jets = ha.sum_in_offsets(jets, jets.pt, selected_events, sel_jet)
+        sumpt_jets = ha.sum_in_offsets(jets.offsets, jets.pt, selected_events, sel_jet)
 
         #create a keras-like array
         arr = NUMPY_LIB.vstack([
