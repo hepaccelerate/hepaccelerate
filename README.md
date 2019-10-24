@@ -20,7 +20,7 @@ More details are available:
 ## Installation
 
 ~~~
-pip install git+https://github.com/jpata/hepaccelerate@v0.1.0
+pip install hepaccelerate
 ~~~
 
 Required python libraries:
