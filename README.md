@@ -9,8 +9,8 @@ Simple example kernels with Numba for data analysis with jagged arrays. You can 
 **Under active development and use by a few CMS analyses!**
 
 <p float="left">
-  <img src="images/kernel_benchmarks.png" alt="Kernel benchmarks" width="300"/>
-  <img src="images/analysis_scaling.png" alt="Analysis scaling" width="300"/>
+  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/images/kernel_benchmarks.png" alt="Kernel benchmarks" width="300"/>
+  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/images/analysis_scaling.png" alt="Analysis scaling" width="300"/>
 </p>
 
 More details are available:
@@ -36,24 +36,30 @@ Optional libraries:
 
 ## Documentation
 This code consists of two parts which can be used independently:
-  - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](hepaccelerate/backend_cpu.py) and [backend_cuda.py](hepaccelerate/backend_cuda.py)  
+  - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cpu.py) and [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
 ## Kernels
 
+The kernels can be used independently by doing
+```python
+#replace with backend_cuda for GPU support
+import hepaccelerate.backend_cpu as ha
+```
+
 We have implemented the following kernels for both the CPU and CUDA backends:
-  - `min_in_offsets(struct, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
-  - `max_in_offsets(struct, content, mask_rows, mask_content)`: as above, but find the maximum
-  - `prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None)`: compute the product in a jagged array
-  - `set_in_offsets(content, offsets, indices, target, mask_rows, mask_content)`: set the indexed value in a jagged array to a target
-  - `get_in_offsets(content, offsets, indices, mask_rows, mask_content)`:   retrieve the indexed values in a jagged array, e.g. get the leading jet pT
-  - `compute_new_offsets(offsets_old, mask_objects, offsets_new)`: given an   awkward offset array and a mask, create an offset array of the unmasked elements
-  - `searchsorted(bins, vals, side="left")`: 1-dimensional search in a sorted   array
-  - `histogram_from_vector(data, weights, bins, mask=None)`: fill a 1-dimensional weighted histogram with arbitrary sorted bins, possibly using a mask
-  - `histogram_from_vector_several(variables, weights, mask)`: fill several   histograms simultaneously based on `variables=[(data0, bins0), ...]`
-  - `get_bin_contents(values, edges, contents, out)`: look up the bin contents of   a histogram based on a vector of values 
-  - `select_muons_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
-  - `mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
+  - `ha.min_in_offsets(struct, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
+  - `ha.max_in_offsets(struct, content, mask_rows, mask_content)`: as above, but find the maximum
+  - `ha.prod_in_offsets(struct, content, mask_rows, mask_content, dtype=None)`: compute the product in a jagged array
+  - `ha.set_in_offsets(content, offsets, indices, target, mask_rows, mask_content)`: set the indexed value in a jagged array to a target
+  - `ha.get_in_offsets(content, offsets, indices, mask_rows, mask_content)`:   retrieve the indexed values in a jagged array, e.g. get the leading jet pT
+  - `ha.compute_new_offsets(offsets_old, mask_objects, offsets_new)`: given an   awkward offset array and a mask, create an offset array of the unmasked elements
+  - `ha.searchsorted(bins, vals, side="left")`: 1-dimensional search in a sorted   array
+  - `ha.histogram_from_vector(data, weights, bins, mask=None)`: fill a 1-dimensional weighted histogram with arbitrary sorted bins, possibly using a mask
+  - `ha.histogram_from_vector_several(variables, weights, mask)`: fill several   histograms simultaneously based on `variables=[(data0, bins0), ...]`
+  - `ha.get_bin_contents(values, edges, contents, out)`: look up the bin contents of   a histogram based on a vector of values 
+  - `ha.select_muons_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
+  - `ha.mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
 
 ## Usage
 
