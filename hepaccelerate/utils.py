@@ -279,7 +279,7 @@ class JaggedStruct(object):
             attributes = self.attrs_data.keys()
 
         new_attrs = {
-            attr_name: self.hepaccelerate_backend.get_in_offsets(getattr(self, attr_name), self.offsets, inds, event_mask, object_mask)
+            attr_name: self.hepaccelerate_backend.get_in_offsets(self.offsets, getattr(self, attr_name), inds, event_mask, object_mask)
             for attr_name in attributes
         }
 

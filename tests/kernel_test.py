@@ -12,7 +12,8 @@ from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 import uproot
 
 USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
-    
+num_datasets = int(os.environ.get("NUM_DATASETS", 1))
+
 def download_file(filename, url):
     """
     Download an URL to a file
@@ -51,7 +52,7 @@ class TestKernels(unittest.TestCase):
         self.dataset = dataset
 
     @staticmethod
-    def load_dataset(numpy_lib):
+    def load_dataset(numpy_lib, num_datasets):
         print("loading dataset")
         download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root")
         datastructures = {
@@ -93,7 +94,9 @@ class TestKernels(unittest.TestCase):
                 ('MET_CovYY', 'float32'),
             ]
         }
-        dataset = Dataset("nanoaod", ["./data/nanoaod_test.root"], datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
+        dataset = Dataset(
+            "nanoaod", num_datasets*["./data/nanoaod_test.root"],
+            datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
       
         try:
             dataset.from_cache()
@@ -126,7 +129,7 @@ class TestKernels(unittest.TestCase):
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         z = self.ha.sum_in_offsets(
-            muons,
+            muons.offsets,
             muons.pt,
             sel_ev,
             sel_mu, dtype=self.NUMPY_LIB.float32)
@@ -138,7 +141,7 @@ class TestKernels(unittest.TestCase):
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         z = self.ha.max_in_offsets(
-            muons,
+            muons.offsets,
             muons.pt,
             sel_ev,
             sel_mu)
@@ -152,8 +155,8 @@ class TestKernels(unittest.TestCase):
         inds = self.NUMPY_LIB.zeros(muons.numevents(), dtype=self.NUMPY_LIB.int8)
         inds[:] = 0
         z = self.ha.get_in_offsets(
-            muons.pt,
             muons.offsets,
+            muons.pt,
             inds,
             sel_ev,
             sel_mu)
@@ -168,33 +171,21 @@ class TestKernels(unittest.TestCase):
         inds[:] = 0
         target = self.NUMPY_LIB.ones(muons.numevents(), dtype=muons.pt.dtype)
         self.ha.set_in_offsets(
-            muons.pt,
             muons.offsets,
+            muons.pt,
             inds,
             target,
             sel_ev,
             sel_mu)
 
         z = self.ha.get_in_offsets(
-            muons.pt,
             muons.offsets,
+            muons.pt,
             inds,
             sel_ev,
             sel_mu)
         z[:] = target[:]
         
-        return muons.numevents()
-
-    def test_kernel_max_in_offsets(self):
-        dataset = self.dataset
-        muons = dataset.structs["Muon"][0]
-        sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
-        sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        z = self.ha.max_in_offsets(
-            muons,
-            muons.pt,
-            sel_ev,
-            sel_mu)
         return muons.numevents()
 
     def test_kernel_simple_cut(self):
@@ -211,18 +202,20 @@ class TestKernels(unittest.TestCase):
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         sel_jet = (jet.pt > 10)
         muons_matched_to_jet = self.ha.mask_deltar_first(
-            muons, sel_mu, jet,
+            {"offsets": muons.offsets, "eta": muons.eta, "phi": muons.phi},
+            sel_mu,
+            {"offsets": jet.offsets, "eta": jet.eta, "phi": jet.phi},
             sel_jet, 0.3
         )
         return muons.numevents()
         
-    def test_kernel_select_muons_opposite_sign(self):
+    def test_kernel_select_opposite_sign(self):
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        muons_passing_os = self.ha.select_muons_opposite_sign(
-                muons, sel_mu)
+        muons_passing_os = self.ha.select_opposite_sign(
+            muons.offsets, muons.charge, sel_mu)
         return muons.numevents()
     
     def test_kernel_histogram_from_vector(self):
@@ -293,7 +286,7 @@ class TestKernels(unittest.TestCase):
         print("mask_deltar_first {0:.2f} MHz".format(t/1000/1000))
         ret["mask_deltar_first"] = t/1000/1000
         
-        t = self.time_kernel(self.test_kernel_select_muons_opposite_sign)
+        t = self.time_kernel(self.test_kernel_select_opposite_sign)
         print("select_muons_opposite_sign {0:.2f} MHz".format(t/1000/1000))
         ret["select_muons_opposite_sign"] = t/1000/1000
         
@@ -307,6 +300,6 @@ class TestKernels(unittest.TestCase):
         
         return ret 
 
-dataset = TestKernels.load_dataset(TestKernels.NUMPY_LIB)
+dataset = TestKernels.load_dataset(TestKernels.NUMPY_LIB, num_datasets)
 if __name__ == "__main__":
     unittest.main()
