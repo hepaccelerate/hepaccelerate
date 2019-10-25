@@ -98,3 +98,5 @@ kernel_benchmarks.txt
 *.json
 
 *.swp
+data/*.h5
+dask-worker-space
