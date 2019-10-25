@@ -18,7 +18,7 @@ URL = 'https://github.com/hepaccelerate/hepaccelerate'
 EMAIL = 'joosep.pata@cern.ch'
 AUTHOR = 'Joosep Pata'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.2.1'
+VERSION = '0.2.2'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
