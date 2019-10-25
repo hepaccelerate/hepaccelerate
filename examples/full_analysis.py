@@ -747,28 +747,19 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def multiprocessing_initializer(args, use_cuda):
-    try:
-        this_worker = get_worker()
-    except Exception as e:
-        this_worker = None
+def multiprocessing_initializer(args, use_cuda, gpu_id):
+    this_worker = get_worker()
 
     import tensorflow as tf
     config = tf.ConfigProto()
     config.intra_op_parallelism_threads=args.nthreads
     config.inter_op_parallelism_threads=args.nthreads
+    os.environ["NUMBA_NUM_THREADS"] = str(args.nthreads)
+    os.environ["OMP_NUM_THREADS"] = str(args.nthreads)
     if not use_cuda: 
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     else:
-        cpu_name = multiprocessing.current_process().name
-        if cpu_name == "MainProcess":
-            import setGPU
-        else: 
-            cpu_id = int(cpu_name[cpu_name.find('-') + 1:]) - 1
-            gpu_id = gpu_id_list[cpu_id]
-            print("process {0} choosing GPU {1}".format(cpu_name, gpu_id))
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         from keras.backend.tensorflow_backend import set_session
         import tensorflow as tf
         config = tf.ConfigProto()
@@ -834,6 +825,12 @@ parameters = {
     "jet_btag": 0.4
 }
 
+def init_cluster(cluster, client):
+    for iw in range(len(cluster.workers)):
+        worker = cluster.workers[iw]
+        print(worker.address)
+        client.run(multiprocessing_initializer, args, use_cuda, gpu_id_list[iw], workers=[worker.address])
+
 if __name__ == "__main__":
     np.random.seed(0)
     args = parse_args()
@@ -841,15 +838,16 @@ if __name__ == "__main__":
     for i in range(1):
         download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
 
+    import dask
     from dask.distributed import Client, LocalCluster
     from distributed import get_worker
 
-    cluster = LocalCluster(n_workers=args.njobs, threads_per_worker=args.nthreads, memory_limit=0)
+    cluster = LocalCluster(n_workers=args.njobs, threads_per_worker=1, memory_limit=0, nanny=None)
     client = Client(cluster)
-
-    #run initialization
-    client.run(multiprocessing_initializer, args, use_cuda)
-    
+    if args.njobs > 1 and args.use_cuda:
+        raise Exception("Need to use LocalCUDACluster with multiple GPUs")
+    client.run(multiprocessing_initializer, args, use_cuda, gpu_id_list[0])
+ 
     print("Processing all datasets")
     datasets = [
         ("DYJetsToLL", "/opendata_files/DYJetsToLL-merged/*.root", True),
