@@ -39,6 +39,47 @@ This code consists of two parts which can be used independently:
   - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cpu.py) and [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
+### Basic idea
+The following example helps to illustrate how Python can be used to write familiar yet efficient loops over objects. Suppose we have for each event a vector of jets, each of which has `jets_genJetIdx` to link to a genjet collection. We might have the following function to retrieve the `vector<float> recojet_genpt` for each event. 
+
+```C++
+//Retrieve the gen pt of each reco jet
+vector<float> get_recojet_genpt(
+  const vector<float>& genJets_pt,
+  const vector<int>& jets_genJetIdx) {
+  vector<float> gen_pts;
+  for (int ijet=0; ijet < jets_pt.size(); ijet++) {
+    float gen_pt = 0.0;
+    if (jets_genJetIdx[ijet] >= 0) {
+      gen_pt = genJets_pt[];
+    }
+    gen_pts.push_back(gen_pt);
+  }
+  return gen_pts;
+}
+```
+
+On the other hand, we can do this for all events in Python with the following function:
+```Python
+#retrieve the genpt of each reco jet into out_genpt
+@numba.njit(parallel=True, fastmath=True)
+def get_genpt_cpu(jet_offsets, jet_genJetIdx, genJet_offsets, genJet_pt, out_genpt):
+  #loop over events
+  for iev in numba.prange(len(jet_offsets) - 1):
+    jets_start = jet_offets[iev]
+    jets_end = jet_offets[iev]
+    #loop over muons
+    for ijet in range(jets_start, jets_end):
+      #get index of genparticle that reco particle was matched to
+      idx_gj = jet_genJetIdx[ijet]
+      if idx_gj >= 0:
+        #this index is within the event (0...Ngenjet),
+        #we need to translate it to the absolute index within the full file using the genJet_offsets array
+        genpt = genJet_pt[genJet_offsets[iev] + idx_gj]
+        out_genpt[ijet] = genpt
+```
+The crucial different is that in the Python version, `jets_genJetIdx` contains the data for all the events and not just one, such that the `jet_offsets` array can be used to retrieve the data for each individual event.
+
 ## Kernels
 
 The kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray`

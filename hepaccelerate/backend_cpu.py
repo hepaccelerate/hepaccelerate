@@ -355,6 +355,14 @@ def set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_con
                 else:
                     index_to_set += 1
 
+@numba.njit(fastmath=True)
+def deltaphi(phi1, phi2):
+    dphi = phi1 - phi2 + math.pi
+    while dphi > 2*math.pi:
+        dphi -= 2*math.pi
+    dphi -= math.pi
+    return dphi
+
 @numba.njit(parallel=True, fastmath=True)
 def broadcast(offsets, content, out):
     for iev in numba.prange(offsets.shape[0]-1):
@@ -382,32 +390,39 @@ Args:
 """
 @numba.njit(parallel=True, fastmath=True)
 def mask_deltar_first_kernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2, offsets2, dr2, mask_out):
-    
-    for iev in numba.prange(len(offsets1)-1):
+   
+    #Loop over the events 
+    for iev in numba.prange(len(offsets1) - 1):
+        #get the start and end indices of the first object collection (e.g. jets)
         a1 = np.uint64(offsets1[iev])
         b1 = np.uint64(offsets1[iev+1])
         
+        #get the start and end indices of the second object collection (e.g. leptons)
         a2 = np.uint64(offsets2[iev])
         b2 = np.uint64(offsets2[iev+1])
-        
+       
+        #Loop over the first object collection in the event 
         for idx1 in range(a1, b1):
             if not mask1[idx1]:
                 continue
                 
             eta1 = np.float32(etas1[idx1])
             phi1 = np.float32(phis1[idx1])
+        
+            #Loop over the second object collection in the event 
             for idx2 in range(a2, b2):
                 if not mask2[idx2]:
                     continue
+
                 eta2 = np.float32(etas2[idx2])
                 phi2 = np.float32(phis2[idx2])
-                
+
+                #compute the delta eta and delta phi
                 deta = abs(eta1 - eta2)
-                dphi = phi1 - phi2 + math.pi
-                while dphi > 2*math.pi:
-                    dphi -= 2*math.pi
-                dphi -= math.pi
-                
+                dphi = deltaphi(phi1, phi2)
+               
+                #compute the deltaR and set the output mask to True
+                #if object has deltaR smaller than the cut
                 passdr = ((deta**2 + dphi**2) < dr2)
                 mask_out[idx1] = mask_out[idx1] | passdr
 
