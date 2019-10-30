@@ -47,12 +47,15 @@ The following example helps to illustrate how Python can be used to write famili
 vector<float> get_recojet_genpt(
   const vector<float>& genJets_pt,
   const vector<int>& jets_genJetIdx) {
+  
   vector<float> gen_pts;
   for (int ijet=0; ijet < jets_pt.size(); ijet++) {
     float gen_pt = 0.0;
+    
     if (jets_genJetIdx[ijet] >= 0) {
-      gen_pt = genJets_pt[];
+      gen_pt = genJets_pt[ijet];
     }
+    
     gen_pts.push_back(gen_pt);
   }
   return gen_pts;
@@ -68,17 +71,20 @@ def get_genpt_cpu(jet_offsets, jet_genJetIdx, genJet_offsets, genJet_pt, out_gen
   for iev in numba.prange(len(jet_offsets) - 1):
     jets_start = jet_offets[iev]
     jets_end = jet_offets[iev]
+    
     #loop over muons
     for ijet in range(jets_start, jets_end):
       #get index of genparticle that reco particle was matched to
       idx_gj = jet_genJetIdx[ijet]
+      
       if idx_gj >= 0:
         #this index is within the event (0...Ngenjet),
-        #we need to translate it to the absolute index within the full file using the genJet_offsets array
+        #we need to translate it to the absolute index within the full file
+        #using the genJet_offsets array
         genpt = genJet_pt[genJet_offsets[iev] + idx_gj]
         out_genpt[ijet] = genpt
 ```
-The crucial different is that in the Python version, `jets_genJetIdx` contains the data for all the events and not just one, such that the `jet_offsets` array can be used to retrieve the data for each individual event.
+The crucial different is that in the Python version, `jets_genJetIdx` contains the data for all the events and not just one, such that the `jet_offsets` array can be used to retrieve the data for each individual event. The Python version is compiled and also multithreaded using the [Numba package](http://numba.pydata.org/).
 
 ## Kernels
 
