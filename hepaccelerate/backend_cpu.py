@@ -3,6 +3,37 @@ import numba
 import numpy as np
 import math
 
+@numba.njit(fastmath=True)
+def spherical_to_cartesian(pt, eta, phi, mass):
+    px = pt * np.cos(phi)
+    py = pt * np.sin(phi)
+    pz = pt * np.sinh(eta)
+    e = np.sqrt(px**2 + py**2 + pz**2 + mass**2)
+    return px, py, pz, e
+
+@numba.njit(fastmath=True)
+def cartesian_to_spherical(px, py, pz, e):
+    pt = np.sqrt(px**2 + py**2)
+    eta = np.arcsinh(pz / pt)
+    phi = np.arctan2(py, px)
+    mass = np.sqrt(e**2 - px**2 - py**2 - pz**2)
+    return pt, eta, phi, mass
+
+@numba.njit(fastmath=True)
+def add_spherical(pts, etas, phis, masses):
+    px_tot = 0.0
+    py_tot = 0.0
+    pz_tot = 0.0
+    e_tot = 0.0
+    
+    for i in range(len(pts)):
+        px, py, pz, e = spherical_to_cartesian(pts[i], etas[i], phis[i], masses[i])
+        px_tot += px
+        py_tot += py
+        pz_tot += pz
+        e_tot += e
+    return cartesian_to_spherical(px_tot, py_tot, pz_tot, e_tot)
+
 """Returns the first index in arr that is equal or larger than val.
 
 We use this function, rather than np.searchsorted to have a similar implementation

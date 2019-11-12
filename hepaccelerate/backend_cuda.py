@@ -1,4 +1,6 @@
 import sys
+import warnings
+import math
 
 try:
     from numba import cuda
@@ -9,6 +11,79 @@ except ImportError as e:
 
 import math
 import numpy as np
+
+@cuda.jit(device=True)
+def spherical_to_cartesian_devfunc(pt, eta, phi, mass):
+    px = pt * math.cos(phi)
+    py = pt * math.sin(phi)
+    pz = pt * math.sinh(eta)
+    e = math.sqrt(px**2 + py**2 + pz**2 + mass**2)
+    return px, py, pz, e
+
+@cuda.jit(device=True)
+def cartesian_to_spherical_devfunc(px, py, pz, e):
+    pt = math.sqrt(px**2 + py**2)
+    eta = math.asinh(pz / pt)
+    phi = math.atan2(py, px)
+    mass = math.sqrt(e**2 - px**2 - py**2 - pz**2)
+    return pt, eta, phi, mass
+
+@cuda.jit(device=True)
+def add_spherical_devfunc(pts, etas, phis, masses):
+    px_tot = np.float32(0.0)
+    py_tot = np.float32(0.0)
+    pz_tot = np.float32(0.0)
+    e_tot = np.float32(0.0)
+    
+    for i in range(len(pts)):
+        px, py, pz, e = spherical_to_cartesian(pts[i], etas[i], phis[i], masses[i])
+        px_tot += px
+        py_tot += py
+        pz_tot += pz
+        e_tot += e
+    return cartesian_to_spherical(px_tot, py_tot, pz_tot, e_tot)
+
+@cuda.jit
+def spherical_to_cartesian_kernel(pt, eta, phi, mass, out_px, out_py, out_pz, out_e):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    
+    for i in range(xi, len(pt), xstride):
+        px, py, pz, e = spherical_to_cartesian_devfunc(pt[i], eta[i], phi[i], mass[i])
+        out_px[i] = px
+        out_py[i] = py
+        out_pz[i] = pz
+        out_e[i] = e
+
+@cuda.jit
+def cartesian_to_spherical_kernel(px, py, pz, e, out_pt, out_eta, out_phi, out_mass):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    
+    for i in range(xi, len(px), xstride):
+        pt, eta, phi, mass = cartesian_to_spherical_devfunc(px[i], py[i], pz[i], e[i])
+        out_pt[i] = pt
+        out_eta[i] = eta
+        out_phi[i] = phi
+        out_mass[i] = mass
+
+def spherical_to_cartesian(pt, eta, phi, mass):
+    out_px = cupy.zeros_like(pt)
+    out_py = cupy.zeros_like(pt)
+    out_pz = cupy.zeros_like(pt)
+    out_e = cupy.zeros_like(pt)
+    spherical_to_cartesian_kernel[32, 1024](pt, eta, phi, mass, out_px, out_py, out_pz, out_e)
+    cuda.synchronize()
+    return out_px, out_py, out_pz, out_e
+
+def cartesian_to_spherical(px, py, pz, e):
+    out_pt = cupy.zeros_like(px)
+    out_eta = cupy.zeros_like(px)
+    out_phi = cupy.zeros_like(px)
+    out_mass = cupy.zeros_like(px)
+    cartesian_to_spherical_kernel[32, 1024](px, py, pz, e, out_pt, out_eta, out_phi, out_mass)
+    cuda.synchronize()
+    return out_pt, out_eta, out_phi, out_mass
 
 #Copied from numba source
 @cuda.jit(device=True)

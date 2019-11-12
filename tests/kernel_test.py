@@ -44,72 +44,70 @@ def download_if_not_exists(filename, url):
         return True
     return False
 
+def load_dataset(numpy_lib, num_datasets):
+    print("loading dataset")
+    download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root")
+    datastructures = {
+        "Muon": [
+            ("Muon_pt", "float32"),
+            ("Muon_eta", "float32"),
+            ("Muon_phi", "float32"),
+            ("Muon_mass", "float32"),
+            ("Muon_charge", "int32"),
+            ("Muon_pfRelIso03_all", "float32"),
+            ("Muon_tightId", "bool")
+        ],
+        "Electron": [
+            ("Electron_pt", "float32"),
+            ("Electron_eta", "float32"),
+            ("Electron_phi", "float32"),
+            ("Electron_mass", "float32"),
+            ("Electron_charge", "int32"),
+            ("Electron_pfRelIso03_all", "float32"),
+            ("Electron_pfId", "bool")
+        ],
+        "Jet": [
+            ("Jet_pt", "float32"),
+            ("Jet_eta", "float32"),
+            ("Jet_phi", "float32"),
+            ("Jet_mass", "float32"),
+            ("Jet_btag", "float32"),
+            ("Jet_puId", "bool"),
+        ],
+
+        "EventVariables": [
+            ("HLT_IsoMu24", "bool"),
+            ('MET_pt', 'float32'),
+            ('MET_phi', 'float32'),
+            ('MET_sumet', 'float32'),
+            ('MET_significance', 'float32'),
+            ('MET_CovXX', 'float32'),
+            ('MET_CovXY', 'float32'),
+            ('MET_CovYY', 'float32'),
+        ]
+    }
+    dataset = Dataset(
+        "nanoaod", num_datasets*["./data/nanoaod_test.root"],
+        datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
+  
+    try:
+        dataset.from_cache()
+    except Exception as e:
+        dataset.load_root()
+        dataset.to_cache()
+    print("merging dataset")
+    dataset.merge_inplace()
+    print("dataset has {0} events, {1:.2f} MB".format(dataset.numevents(), dataset.memsize()/1000/1000))
+    print("moving to device")
+    dataset.move_to_device(numpy_lib)
+    return dataset
+
 class TestKernels(unittest.TestCase):
-    NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)
-    use_cuda = USE_CUDA
-    
-    def setUp(self):
-        self.dataset = dataset
-
-    @staticmethod
-    def load_dataset(numpy_lib, num_datasets):
-        print("loading dataset")
-        download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root")
-        datastructures = {
-            "Muon": [
-                ("Muon_pt", "float32"),
-                ("Muon_eta", "float32"),
-                ("Muon_phi", "float32"),
-                ("Muon_mass", "float32"),
-                ("Muon_charge", "int32"),
-                ("Muon_pfRelIso03_all", "float32"),
-                ("Muon_tightId", "bool")
-            ],
-            "Electron": [
-                ("Electron_pt", "float32"),
-                ("Electron_eta", "float32"),
-                ("Electron_phi", "float32"),
-                ("Electron_mass", "float32"),
-                ("Electron_charge", "int32"),
-                ("Electron_pfRelIso03_all", "float32"),
-                ("Electron_pfId", "bool")
-            ],
-            "Jet": [
-                ("Jet_pt", "float32"),
-                ("Jet_eta", "float32"),
-                ("Jet_phi", "float32"),
-                ("Jet_mass", "float32"),
-                ("Jet_btag", "float32"),
-                ("Jet_puId", "bool"),
-            ],
-
-            "EventVariables": [
-                ("HLT_IsoMu24", "bool"),
-                ('MET_pt', 'float32'),
-                ('MET_phi', 'float32'),
-                ('MET_sumet', 'float32'),
-                ('MET_significance', 'float32'),
-                ('MET_CovXX', 'float32'),
-                ('MET_CovXY', 'float32'),
-                ('MET_CovYY', 'float32'),
-            ]
-        }
-        dataset = Dataset(
-            "nanoaod", num_datasets*["./data/nanoaod_test.root"],
-            datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
-      
-        try:
-            dataset.from_cache()
-        except Exception as e:
-            dataset.load_root()
-            dataset.to_cache()
-        print("merging dataset")
-        dataset.merge_inplace()
-        print("dataset has {0} events, {1:.2f} MB".format(dataset.numevents(), dataset.memsize()/1000/1000))
-        print("moving to device")
-        dataset.move_to_device(numpy_lib)
- 
-        return dataset
+    @classmethod
+    def setUpClass(self):    
+        self.NUMPY_LIB, self.ha = choose_backend(use_cuda=USE_CUDA)
+        self.use_cuda = USE_CUDA
+        self.dataset = load_dataset(self.NUMPY_LIB, num_datasets)
 
     def time_kernel(self, test_kernel):
         test_kernel()
@@ -298,8 +296,41 @@ class TestKernels(unittest.TestCase):
         print("histogram_from_vector_several {0:.2f} MHz".format(t/1000/1000))
         ret["histogram_from_vector_several"] = t/1000/1000
         
-        return ret 
+        return ret
 
-dataset = TestKernels.load_dataset(TestKernels.NUMPY_LIB, num_datasets)
+    def test_coordinate_transformation(self):
+        #Don't test the scalar ops on GPU
+        if not USE_CUDA:
+            px, py, pz, e = self.ha.spherical_to_cartesian(100.0, 0.2, 0.4, 100.0)
+            pt, eta, phi, mass = self.ha.cartesian_to_spherical(px, py, pz, e)
+            self.assertAlmostEqual(pt, 100.0, 2)
+            self.assertAlmostEqual(eta, 0.2, 2)
+            self.assertAlmostEqual(phi, 0.4, 2)
+            self.assertAlmostEqual(mass, 100.0, 2)
+
+        pt_orig = self.NUMPY_LIB.array([100.0, 20.0], dtype=self.NUMPY_LIB.float32)
+        eta_orig = self.NUMPY_LIB.array([0.2, -0.2], dtype=self.NUMPY_LIB.float32)
+        phi_orig = self.NUMPY_LIB.array([0.4, -0.4], dtype=self.NUMPY_LIB.float32)
+        mass_orig = self.NUMPY_LIB.array([100.0, 20.0], dtype=self.NUMPY_LIB.float32)
+
+        px, py, pz, e = self.ha.spherical_to_cartesian(pt_orig, eta_orig, phi_orig, mass_orig)
+        pt, eta, phi, mass = self.ha.cartesian_to_spherical(px, py, pz, e)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(pt[0]), 100.0, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(eta[0]), 0.2, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(phi[0]), 0.4, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(mass[0]), 100, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(pt[1]), 20, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(eta[1]), -0.2, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(phi[1]), -0.4, 2)
+        self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(mass[1]), 20, 2)
+
+        #Don't test the scalar ops on GPU
+        if not USE_CUDA:
+            pt_tot, eta_tot, phi_tot, mass_tot = self.ha.add_spherical(pt_orig, eta_orig, phi_orig, mass_orig)
+            self.assertAlmostEqual(pt_tot, 114.83390378237536)
+            self.assertAlmostEqual(eta_tot, 0.13980652560764573)
+            self.assertAlmostEqual(phi_tot, 0.2747346427265487)
+            self.assertAlmostEqual(mass_tot, 126.24366428840153)
+
 if __name__ == "__main__":
     unittest.main()
