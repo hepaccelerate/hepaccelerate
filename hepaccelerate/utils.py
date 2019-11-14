@@ -139,49 +139,6 @@ class JaggedStruct(object):
             prefix, numpy_lib, attr_names_dtypes
         )
 
-    """Saves this JaggedStruct to numpy memmap files
-    """
-    def save(self, path):
-        for attr, dtype in self.attr_names_dtypes + [("offsets", "uint64")]:
-            attr = attr.replace(self.prefix, "")
-            arr = getattr(self, attr)
-            fn = path + ".{0}.mmap".format(attr)
-            if len(arr) == 0:
-                f = open(fn, "wb")
-                f.close()
-            else:
-                m = np.memmap(fn, dtype=dtype, mode='write',
-                    shape=(len(arr))
-                )
-                m[:] = arr[:]
-                m.flush()
- 
-    """
-    Loads a JaggedStruct based on numpy memmap files.
-
-    path (string): path to a folder that contains the memmap files
-    prefix (string): prefix to remove from the attribute name (e.g. Jet_pt -> pt)
-    attr_names_dtypes (list): list of (name, dtype string) tuples for all the attributes
-    numpy_lib (module): either numpy or cupy
-    """
-    @staticmethod 
-    def load(path, prefix, attr_names_dtypes, numpy_lib):
-        attrs_data = {}
-        offsets = None
-        for attr, dtype in attr_names_dtypes + [("offsets", "uint64")]:
-            attr = attr.replace(prefix, "")
-            if os.stat(path + ".{0}.mmap".format(attr)).st_size == 0:
-                m = numpy_lib.array([], dtype=dtype)
-            else:
-                m = np.memmap(path + ".{0}.mmap".format(attr), dtype=dtype, mode='r')
-            arr = numpy_lib.array(m)
-            if attr == "offsets":
-                offsets = arr
-            else:
-                attrs_data[attr] = arr
-            del m
-        return JaggedStruct(offsets, attrs_data, prefix, numpy_lib, attr_names_dtypes)
-
     """Transfers the JaggedStruct data to either the GPU or system memory
     based on a numpy array
     """
@@ -390,7 +347,7 @@ class Dataset(BaseDataset):
     numpy_lib = np
     
     def __init__(self, name, filenames, datastructures,
-        datapath="", cache_location="", treename="Events", is_mc=True):
+        datapath="", treename="Events", is_mc=True):
         
         self.datapath = datapath
         self.name = name
@@ -405,7 +362,6 @@ class Dataset(BaseDataset):
         self.names_eventvars = [evvar for evvar, dtype in self.eventvars_dtypes] 
         self.structs_dtypes = {k: v for (k, v) in datastructures.items() if k != "EventVariables"}
         self.names_structs = sorted(self.structs_dtypes.keys())
-        self.cache_location = cache_location
         self.is_mc = is_mc
          
         #lists of data, one per file
@@ -415,7 +371,6 @@ class Dataset(BaseDataset):
         self.eventvars = []
 
         self.func_filename_precompute = None
-        self.cache_metadata = []
 
     def merge_inplace(self):
 
@@ -455,14 +410,8 @@ class Dataset(BaseDataset):
             new_structs[structname] = [js]
         new_structs = new_structs
         
-        new_metadata = Results({}) 
-        for md in self.cache_metadata:
-            new_metadata += md
-        new_metadata = [new_metadata]
-        
         self.structs = new_structs
         self.eventvars = eventvars 
-        self.cache_metadata = new_metadata
         self.numfiles = 1
         numevents_after = self.numevents()
         assert(numevents_after == numevents_before)
@@ -498,9 +447,6 @@ class Dataset(BaseDataset):
             self.name, self.numfiles, nev, self.structs, self.eventvars)
         return s
 
-    def get_cache_dir(self, fn):
-        return self.cache_location + fn.replace(self.datapath, "")
-
     def printout(self):
         s = str(self) 
         for structname in self.structs.keys():
@@ -513,7 +459,6 @@ class Dataset(BaseDataset):
     def load_root(self, nthreads=1, verbose=False):
         self.preload(nthreads)
         self.make_objects()
-        self.cache_metadata = self.create_cache_metadata()
 
     def preload(self, nthreads=1, verbose=False):
         super(Dataset, self).preload(nthreads, verbose)
@@ -590,61 +535,6 @@ class Dataset(BaseDataset):
             print("analyze: processed analysis with {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz, {3:.2E} MB/s".format(len(self), dt, len(self)/dt, self.memsize()/dt/1024.0/1024.0))
         return sum(rets, Results({}))
 
-    def check_cache(self):
-        for ifn in range(self.numfiles):
-            fn = self.filenames[ifn]
-            cachepath = self.get_cache_dir(fn)
-            bfn, dn = self.filename_to_cachedir(fn)
-            
-            #Check the memmap files for all struct attributes are present (e.g. Jet_pt)
-            for structname in self.names_structs:
-                for dtype in self.structs_dtypes[structname]:
-                    attr_name = dtype[0].replace(structname+"_", "") 
-                    fn = os.path.join(dn, bfn + ".{0}.{1}.mmap".format(structname, attr_name))
-                    if not os.path.isfile(fn):
-                        return False
-
-            #Check the memmap files for all event variables are present
-            for attr, dtype in self.eventvars_dtypes:
-                fn = os.path.join(dn, bfn + ".{0}.mmap".format(attr))
-                if not os.path.isfile(fn):
-                    return False
-            
-            #Make sure the JSON cache with the file metadata can be loaded
-            try:
-                cache_md = open(os.path.join(dn, bfn + ".cache.json".format(attr)), "r")
-                md = json.load(cache_md)
-            except Exception as e:
-                return False
-
-        #Cache was fine
-        return True
-
-    def to_cache(self, nthreads=1, verbose=False):
-        t0 = time.time()
-        
-        if nthreads == 1:
-            for ifn in range(self.numfiles):
-                self.to_cache_worker(ifn)
-        else:
-            from concurrent.futures import ThreadPoolExecutor
-            results = []
-            with ThreadPoolExecutor(max_workers=nthreads) as executor:
-                executor.map(self.to_cache_worker, range(self.numfiles))
-        
-         
-        t1 = time.time()
-        dt = t1 - t0
-        if verbose:
-            print("to_cache: created cache for {1:.2E} events in {0:.1f} seconds, speed {2:.2E} Hz".format(
-                dt, len(self), len(self)/dt
-            ))
-
-    def filename_to_cachedir(self, filename):
-        bfn = os.path.basename(filename).replace(".root", "")
-        dn = os.path.dirname(self.get_cache_dir(filename))
-        return bfn, dn
-
     @staticmethod
     def makedir_safe(dn):
         #maybe directory was already created by another worker
@@ -652,108 +542,6 @@ class Dataset(BaseDataset):
             os.makedirs(dn)
         except FileExistsError as e:
             pass
-
-    def create_cache_metadata(self):
-        
-        ret_cache_metadata = []
-        for ifn in range(self.numfiles):
-            fn = self.filenames[ifn] 
-            
-            precomputed_results = {}
-            if not (self.func_filename_precompute is None):
-                precomputed_results = self.func_filename_precompute(fn)
-            cache_metadata = Results({"filename": [fn], "precomputed_results": Results(precomputed_results), "numevents": self.numevents()})
-            ret_cache_metadata += [cache_metadata]
-        return ret_cache_metadata
-
- 
-    def to_cache_worker(self, ifn):
-        fn = self.filenames[ifn] 
-        bfn, dn = self.filename_to_cachedir(fn)
-        self.makedir_safe(dn)
-
-        #Save jagged arrays (structs)
-        for structname in self.names_structs:
-            self.structs[structname][ifn].save(os.path.join(dn, bfn + ".{0}".format(structname)))
-
-        #Save event variables
-        for attr, dtype in self.eventvars_dtypes:
-            arr = self.eventvars[ifn][attr]
-            fn = os.path.join(dn, bfn + ".{0}.mmap".format(attr))
-            if len(arr) == 0:
-                f = open(fn, 'wb')
-                f.close()
-            else:
-                m = np.memmap(fn, dtype=dtype, mode='write', shape=(len(arr))
-                )
-                m[:] = arr[:]
-                m.flush()
-                del m
-        
-        cache_metadata = self.cache_metadata[ifn] 
-        with open(os.path.join(dn, bfn + ".cache.json"), "w") as fi:
-            fi.write(json.dumps(cache_metadata, indent=2))
-
-        return
-
-    def from_cache(self, verbose=False, executor=None):
-        t0 = time.time()
-
-        if executor is None:
-            for ifn in range(self.numfiles):
-                ifn, loaded_structs, eventvars, cache_metadata = self.from_cache_worker(ifn)
-                for structname in self.names_structs:
-                    self.structs[structname] += [loaded_structs[structname]]
-                self.eventvars += [eventvars]
-                self.cache_metadata += [Results(cache_metadata)]
-        else:
-            results = executor.map(self.from_cache_worker, range(self.numfiles))
-            results = list(sorted(results, key=lambda x: x[0]))
-            for structname in self.names_structs:
-                self.structs[structname] = [r[1][structname] for r in results]
-            self.eventvars = [r[2] for r in results] 
-            self.cache_metadata = [Results(r[3]) for r in results]
-
-            #temporary fix
-            for i in range(len(self.cache_metadata)):
-                self.cache_metadata[i]["precomputed_results"] = Results(self.cache_metadata[i]["precomputed_results"]) 
-                if isinstance(self.cache_metadata[i]["filename"], str):
-                    self.cache_metadata[i]["filename"] = [self.cache_metadata[i]["filename"]]
-
-        t1 = time.time()
-        dt = t1 - t0
-        if verbose:
-            print("from_cache: loaded cache for {1:.2E} events in {0:.1f} seconds, speed {2:.2E} Hz, {3:.2E} MB/s".format(
-                dt, len(self), len(self)/dt, self.memsize()/dt/1024.0/1024.0
-            ))
-
-    def from_cache_worker(self, ifn):
-        fn = self.filenames[ifn]
-        bfn = os.path.basename(fn).replace(".root", "")
-        
-        dn = os.path.dirname(self.get_cache_dir(fn))
-
-        loaded_structs = {}
-        for struct in self.names_structs:
-            loaded_structs[struct]= JaggedStruct.load(os.path.join(dn, bfn+".{0}".format(struct)), struct+"_", self.structs_dtypes[struct], self.numpy_lib)
-        
-        eventvars = {}
-        for attr, dtype in self.eventvars_dtypes:
-            if os.stat(os.path.join(dn, bfn + ".{0}.mmap".format(attr))).st_size == 0:
-                m = self.numpy_lib.array([], dtype=dtype)
-            else:
-                m = np.memmap(os.path.join(dn, bfn + ".{0}.mmap".format(attr)),
-                    dtype=dtype, mode='r'
-                )
-            eventvars[attr] = self.numpy_lib.array(m)
-            del m
-        
-        with open(os.path.join(dn, bfn + ".cache.json".format(attr)), "r") as fi:
-            cache_metadata = json.load(fi)
-            cache_metadata["precomputed_results"] = Results(cache_metadata["precomputed_results"])
-            cache_metadata = Results(cache_metadata)
-
-        return ifn, loaded_structs, eventvars, cache_metadata
  
     def num_objects_loaded(self, structname):
         n_objects = 0

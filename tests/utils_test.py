@@ -12,14 +12,6 @@ class TestJaggedStruct(unittest.TestCase):
     def test_jaggedstruct(self):
         attr_names_dtypes = [("Muon_pt", "float64")]
         js = JaggedStruct([0,2,3], {"pt": np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float32)}, "Muon_", np, attr_names_dtypes)
-        js.attr_names_dtypes = attr_names_dtypes
-        js.save("cache")
-    
-        js2 = JaggedStruct.load("cache", "Muon_", attr_names_dtypes, np)
-    
-        np.all(js.offsets == js2.offsets)
-        for k in js.attrs_data.keys():
-            np.all(getattr(js, k) == getattr(js2, k))
 
 class TestHistogram(unittest.TestCase):
     NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)
@@ -90,7 +82,7 @@ class TestDataset(unittest.TestCase):
                     ("EventWeight", "float32")
                 ]
             }
-        dataset = Dataset("HZZ", num_iter*["data/HZZ.root"], datastructures, cache_location="./mycache/", treename="events", datapath="")
+        dataset = Dataset("HZZ", num_iter*["data/HZZ.root"], datastructures, treename="events", datapath="")
         assert(dataset.filenames[0] == "data/HZZ.root")
         assert(len(dataset.filenames) == num_iter)
         assert(len(dataset.structs["Jet"]) == 0)
@@ -100,32 +92,6 @@ class TestDataset(unittest.TestCase):
     def setUp(self):
         self.dataset = self.load_dataset()
 
-    def test_dataset_to_cache(self):
-        dataset = self.dataset
-    
-        dataset.load_root()
-        assert(len(dataset.data_host) == 1)
-        
-        assert(len(dataset.structs["Jet"]) == 1)
-        assert(len(dataset.eventvars) == 1)
-    
-        dataset.to_cache()
-        return dataset
-    
-    def test_dataset_from_cache(self):
-        dataset = self.dataset
-        dataset.load_root()
-        dataset.to_cache()
-        del dataset
-        dataset = self.load_dataset()
-        dataset.from_cache()
-        
-        dataset2 = self.load_dataset()
-        dataset2.load_root()
-    
-        assert(dataset.num_objects_loaded("Jet") == dataset2.num_objects_loaded("Jet"))
-        assert(dataset.num_events_loaded("Jet") == dataset2.num_events_loaded("Jet"))
-   
     @staticmethod
     def map_func(dataset, ifile):
         mu = dataset.structs["Muon"][ifile]
@@ -188,8 +154,6 @@ class TestDataset(unittest.TestCase):
         ) for i in range(num_iter)])
 
         numevents = ds_multi.numevents()
-        EventWeight_total = sum([md["precomputed_results"]["EventWeight"] for md in ds_multi.cache_metadata])
-        numevents_total = sum([md["numevents"] for md in ds_multi.cache_metadata])
 
         ds_multi.merge_inplace()
         assert(len(ds_multi.structs["Jet"]) == 1)
@@ -202,8 +166,6 @@ class TestDataset(unittest.TestCase):
         )
         assert(TestDataset.NUMPY_LIB.all(jet_sume_merged == jet_sume))
         assert(ds_multi.numevents() == numevents)
-        assert(abs(ds_multi.cache_metadata[0]["precomputed_results"]["EventWeight"] - EventWeight_total) < 0.01)
-        assert(abs(ds_multi.cache_metadata[0]["numevents"] - numevents_total) == 0)
 
 if __name__ == "__main__":
     unittest.main()

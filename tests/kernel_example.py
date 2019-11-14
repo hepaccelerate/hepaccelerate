@@ -12,7 +12,7 @@ else:
   anp.asnumpy = anp.array
 
 fi = uproot.open("data/nanoaod_test.root")
-tt = fi.get("aod2nanoaod/Events")
+tt = fi.get("Events")
 jet_eta = tt.array("Jet_eta")
 jet_phi = tt.array("Jet_phi")
 jet_pt = tt.array("Jet_pt")

@@ -88,13 +88,9 @@ def load_dataset(numpy_lib, num_datasets):
     }
     dataset = Dataset(
         "nanoaod", num_datasets*["./data/nanoaod_test.root"],
-        datastructures, cache_location="./mycache/", treename="aod2nanoaod/Events", datapath="")
+        datastructures, treename="Events", datapath="")
   
-    try:
-        dataset.from_cache()
-    except Exception as e:
-        dataset.load_root()
-        dataset.to_cache()
+    dataset.load_root()
     print("merging dataset")
     dataset.merge_inplace()
     print("dataset has {0} events, {1:.2f} MB".format(dataset.numevents(), dataset.memsize()/1000/1000))

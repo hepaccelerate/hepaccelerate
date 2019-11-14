@@ -72,16 +72,9 @@ datastructures = {
             ]
     }
 
-dataset = Dataset("HZZ", [filename], datastructures, cache_location="./mycache/", treename="events")
+dataset = Dataset("HZZ", [filename], datastructures, treename="events")
 
-#load data to memory
-try:
-    dataset.from_cache(verbose=True)
-    print("Loaded data from cache, did not touch original ROOT files.")
-except FileNotFoundError as e:
-    print("Cache not found, creating...")
-    dataset.load_root()
-    dataset.to_cache()
+dataset.load_root()
 
 #move to GPU if CUDA was specified
 dataset.move_to_device(NUMPY_LIB)

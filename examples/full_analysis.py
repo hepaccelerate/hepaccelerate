@@ -2,6 +2,9 @@ import os, glob, sys, time, argparse, multiprocessing
 import pickle, math, requests
 from collections import OrderedDict
 
+import distributed
+from distributed import WorkerPlugin
+
 import uproot
 import hepaccelerate
 from hepaccelerate.utils import Histogram, Results
@@ -13,10 +16,21 @@ import numpy as np
 use_cuda = bool(int(os.environ.get("HEPACCELERATE_CUDA", 0)))
 
 #save training arrays for DNN
-save_arrays = False
+save_arrays = True
 
-#GPUs to use when multiprocessing
-gpu_id_list = [0, 1]
+class MyPlugin(WorkerPlugin):
+    def __init__(self, args):
+        self.args = args
+        pass
+
+    def setup(self, worker: distributed.Worker):
+        multiprocessing_initializer(self.args)
+
+    def teardown(self, worker: distributed.Worker):
+        pass
+
+    def transition(self, key: str, start: str, finish: str, **kwargs):
+        pass
 
 #just to load the DNN model files
 def download_file(filename, url):
@@ -52,16 +66,18 @@ def download_if_not_exists(filename, url):
 
 #DNN weights produced using examples/train_dnn.py and setting save_arrays=True
 class DNNModel:
-    def __init__(self):
+    def __init__(self, NUMPY_LIB):
         import keras
         self.models = []
         for i in range(1):
             self.models += [keras.models.load_model("data/model_kf{0}.h5".format(i))]
+        self.models[0].summary()
+        self.NUMPY_LIB = NUMPY_LIB
 
     def eval(self, X, use_cuda):
         if use_cuda:
-            X = NUMPY_LIB.asnumpy(X)
-        rets = [NUMPY_LIB.array(m.predict(X, batch_size=10000)[:, 0]) for m in self.models]
+            X = self.NUMPY_LIB.asnumpy(X)
+        rets = [self.NUMPY_LIB.array(m.predict(X, batch_size=10000)[:, 0]) for m in self.models]
         return rets
 
 def create_datastructure(ismc):
@@ -554,54 +570,31 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     print("run_analysis: {0:.2E} events in {1:.2f} seconds, speed {2:.2E} Hz".format(dataset.numevents(), t1 - t0, speed))
     return res
 
-def load_dataset(datapath, cachepath, filenames, ismc, nthreads, skip_cache, do_skim, NUMPY_LIB, ha):
+def load_dataset(datapath, filenames, ismc, nthreads, do_skim, NUMPY_LIB, ha):
     ds = hepaccelerate.Dataset(
         "dataset",
         filenames,
         create_datastructure(ismc),
         datapath=datapath,
-        cache_location=cachepath,
-        treename="aod2nanoaod/Events",
+        treename="Events",
     )
     
-    cache_valid = ds.check_cache()
-   
     timing_results = {}
  
-    if skip_cache or not cache_valid:
-        
-        #Load the ROOT files
-        print("Loading dataset from {0} files".format(len(ds.filenames)))
-        t0 = time.time()
-        ds.preload(nthreads=nthreads)
-        t1 = time.time()
-        timing_results["load_root"] = t1 - t0
-
-        ds.make_objects()
-        ds.cache_metadata = ds.create_cache_metadata()
-        print("Loaded dataset, {0:.2f} MB, {1} files, {2} events".format(ds.memsize() / 1024 / 1024, len(ds.filenames), ds.numevents()))
+    #Load the ROOT files
+    print("Loading dataset from {0} files".format(len(ds.filenames)))
+    t0 = time.time()
+    ds.preload(nthreads=nthreads)
+    t1 = time.time()
+    ds.make_objects()
+    timing_results["load_root"] = t1 - t0
+    print("Loaded dataset, {0:.2f} MB, {1} files, {2} events".format(ds.memsize() / 1024 / 1024, len(ds.filenames), ds.numevents()))
     
-        #Apply a skim on the trigger bit for each file
-        if do_skim:
-            masks = [v['HLT_IsoMu24']==True for v in ds.eventvars]
-            ds.compact(masks)
-            print("Applied trigger bit selection skim, {0:.2f} MB, {1} files, {2} events".format(ds.memsize() / 1024 / 1024, len(ds.filenames), ds.numevents()))
-    
-        print("Saving skimmed data to uncompressed cache")
-        t0 = time.time()
-        ds.to_cache(nthreads=nthreads)
-        t1 = time.time()
-        timing_results["to_cache"] = t1 - t0
-        speed = ds.numevents() / (t1 - t0)
-        print("load_dataset: {0:.2E} events / second".format(speed))
-    else:
-        print("Loading from existing cache")
-        t0 = time.time()
-        ds.from_cache(verbose=True)
-        t1 = time.time()
-        timing_results["from_cache"] = t1 - t0
-        speed = ds.numevents() / (t1 - t0)
-        print("load_dataset: {0:.2E} events / second".format(speed))
+    #Apply a skim on the trigger bit for each file
+    if do_skim:
+        masks = [v['HLT_IsoMu24']==True for v in ds.eventvars]
+        ds.compact(masks)
+        print("Applied trigger bit selection skim, {0:.2f} MB, {1} files, {2} events".format(ds.memsize() / 1024 / 1024, len(ds.filenames), ds.numevents()))
     
     #Compute the average length of the data structures
     avg_vec_length = np.mean(np.array([[v["pt"].shape[0] for v in ds.structs[ss]] for ss in ds.structs.keys()]))
@@ -724,15 +717,8 @@ def parse_args():
     parser.add_argument('--datapath', action='store',
         help='Input file path that contains the CMS /store/... folder, e.g. /mnt/hadoop',
         required=False, default="/storage/user/jpata")
-    parser.add_argument('--cachepath', action='store',
-        help='Location where to store the cache',
-        required=False, default="./mycache")
-    parser.add_argument('--ismc', action='store_true',
-        help='Flag to specify if dataset is MC')
     parser.add_argument('--skim', action='store_true',
         help='Specify if skim should be done')
-    parser.add_argument('--nocache', action='store_true',
-        help='Flag to specify if branch cache will be skipped')
     parser.add_argument('--nthreads', action='store',
         help='Number of parallel threads', default=1, type=int)
     parser.add_argument('--out', action='store',
@@ -740,14 +726,12 @@ def parse_args():
     parser.add_argument('--njobs', action='store',
         help='Number of multiprocessing jobs', default=1, type=int)
     parser.add_argument('--njec', action='store',
-        help='Number of JEC scenarios', default=20, type=int)
-
-    parser.add_argument('filenames', nargs=argparse.REMAINDER)
+        help='Number of JEC scenarios', default=1, type=int)
  
     args = parser.parse_args()
     return args
 
-def multiprocessing_initializer(args, use_cuda, gpu_id):
+def multiprocessing_initializer(args, gpu_id=None):
     this_worker = get_worker()
 
     import tensorflow as tf
@@ -756,10 +740,11 @@ def multiprocessing_initializer(args, use_cuda, gpu_id):
     config.inter_op_parallelism_threads=args.nthreads
     os.environ["NUMBA_NUM_THREADS"] = str(args.nthreads)
     os.environ["OMP_NUM_THREADS"] = str(args.nthreads)
-    if not use_cuda: 
+    if not args.use_cuda: 
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     else:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        if not gpu_id is None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
         from keras.backend.tensorflow_backend import set_session
         import tensorflow as tf
         config = tf.ConfigProto()
@@ -769,12 +754,13 @@ def multiprocessing_initializer(args, use_cuda, gpu_id):
 
     from keras.backend.tensorflow_backend import set_session
     set_session(tf.Session(config=config))
-    this_worker.dnnmodel = DNNModel()
     
-    NUMPY_LIB, ha = hepaccelerate.choose_backend(use_cuda)
+    NUMPY_LIB, ha = hepaccelerate.choose_backend(args.use_cuda)
+    #this_worker.dnnmodel = DNNModel(NUMPY_LIB)
+    this_worker.dnnmodel = None
     this_worker.NUMPY_LIB = NUMPY_LIB
     this_worker.ha = ha
-    if use_cuda:
+    if args.use_cuda:
         import cuda_kernels as kernels
     else:
         import cpu_kernels as kernels
@@ -801,9 +787,9 @@ def load_and_analyze(args_tuple):
     NUMPY_LIB, ha = hepaccelerate.choose_backend(args.use_cuda)
     
     print("Loading {0}".format(fn))
-    ds, timing_results = load_dataset(args.datapath, args.cachepath, fn, ismc, args.nthreads, args.nocache, args.skim, NUMPY_LIB, ha)
+    ds, timing_results = load_dataset(args.datapath, fn, ismc, args.nthreads, args.skim, NUMPY_LIB, ha)
     t0 = time.time()
-    ret = run_analysis(ds, "{0}_{1}".format(dataset, ichunk), this_worker.dnnmodel, use_cuda, ismc)
+    ret = run_analysis(ds, "{0}_{1}".format(dataset, ichunk), this_worker.dnnmodel, args.use_cuda, ismc)
     t1 = time.time()
     ret["timing"] = Results(timing_results)
     ret["timing"]["run_analysis"] = t1 - t0
@@ -825,18 +811,24 @@ parameters = {
     "jet_btag": 0.4
 }
 
-def init_cluster(cluster, client):
-    for iw in range(len(cluster.workers)):
-        worker = cluster.workers[iw]
-        print(worker.address)
-        client.run(multiprocessing_initializer, args, use_cuda, gpu_id_list[iw], workers=[worker.address])
+datasets = [
+    ("DYJetsToLL", "/opendata_files/DYJetsToLL-merged/*.root", True),
+    ("TTJets_FullLeptMGDecays", "/opendata_files/TTJets_FullLeptMGDecays-merged/*.root", True),
+    ("TTJets_Hadronic", "/opendata_files/TTJets_Hadronic-merged/*.root", True),
+    ("TTJets_SemiLeptMGDecays", "/opendata_files/TTJets_SemiLeptMGDecays-merged/*.root", True),
+    ("W1JetsToLNu", "/opendata_files/W1JetsToLNu-merged/*.root", True),
+    ("W2JetsToLNu", "/opendata_files/W2JetsToLNu-merged/*.root", True),
+    ("W3JetsToLNu", "/opendata_files/W3JetsToLNu-merged/*.root", True),
+    ("GluGluToHToMM", "/opendata_files/GluGluToHToMM-merged/*.root", True),
+    ("SingleMu", "/opendata_files/SingleMu-merged/*.root", False),
+]
 
 if __name__ == "__main__":
     np.random.seed(0)
     args = parse_args()
     args.use_cuda = use_cuda
-    for i in range(1):
-        download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
+    #for i in range(1):
+    #    download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
 
     import dask
     from dask.distributed import Client, LocalCluster
@@ -844,22 +836,10 @@ if __name__ == "__main__":
 
     cluster = LocalCluster(n_workers=args.njobs, threads_per_worker=1, memory_limit=0, nanny=None)
     client = Client(cluster)
-    if args.njobs > 1 and args.use_cuda:
-        raise Exception("Need to use LocalCUDACluster with multiple GPUs")
-    client.run(multiprocessing_initializer, args, use_cuda, gpu_id_list[0])
+    plugin = MyPlugin(args)
+    client.register_worker_plugin(plugin)
  
     print("Processing all datasets")
-    datasets = [
-        ("DYJetsToLL", "/opendata_files/DYJetsToLL-merged/*.root", True),
-        ("TTJets_FullLeptMGDecays", "/opendata_files/TTJets_FullLeptMGDecays-merged/*.root", True),
-        ("TTJets_Hadronic", "/opendata_files/TTJets_Hadronic-merged/*.root", True),
-        ("TTJets_SemiLeptMGDecays", "/opendata_files/TTJets_SemiLeptMGDecays-merged/*.root", True),
-        ("W1JetsToLNu", "/opendata_files/W1JetsToLNu-merged/*.root", True),
-        ("W2JetsToLNu", "/opendata_files/W2JetsToLNu-merged/*.root", True),
-        ("W3JetsToLNu", "/opendata_files/W3JetsToLNu-merged/*.root", True),
-        ("GluGluToHToMM", "/opendata_files/GluGluToHToMM-merged/*.root", True),
-        ("SingleMu", "/opendata_files/SingleMu-merged/*.root", False),
-    ]
     arglist = []
 
     walltime_t0 = time.time()
@@ -873,7 +853,7 @@ if __name__ == "__main__":
             ichunk += 1
 
     print("Processing {0} arguments".format(len(arglist)))
-    futures = client.map(load_and_analyze, arglist)
+    futures = client.map(load_and_analyze, arglist, retries=3)
     ret = [fut.result() for fut in futures]
     walltime_t1 = time.time()
 

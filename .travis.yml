@@ -17,6 +17,7 @@ install:
   - pip install numpy --upgrade
   - pip install numba --upgrade
   - pip install requests
+  - pip install xxhash lz4
 
 script:
     - curl -k https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root -o data/nanoaod_test.root

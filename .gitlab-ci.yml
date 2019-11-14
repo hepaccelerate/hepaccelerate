@@ -4,7 +4,7 @@ stages:
 
 #image used to run code
 variables:
-  singularity_image: /storage/user/jpata/cupy.simg
+  singularity_image: /storage/user/jpata/gpuservers/singularity/images/cupy.simg
   input_data_cache: /storage/user/jpata/ci_cache
 
 tests_cpu:

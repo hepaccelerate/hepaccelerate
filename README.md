@@ -179,16 +179,10 @@ datastructures = {
             ]
     }
 
-dataset = Dataset("HZZ", [filename], datastructures, cache_location="./mycache/", treename="events")
+dataset = Dataset("HZZ", [filename], datastructures, treename="events")
 
 #load data to memory
-try:
-    dataset.from_cache(verbose=True)
-    print("Loaded data from cache, did not touch original ROOT files.")
-except FileNotFoundError as e:
-    print("Cache not found, creating...")
-    dataset.load_root()
-    dataset.to_cache()
+dataset.load_root()
 
 #process data
 results = dataset.analyze(analyze_data_function, verbose=True, parameters={"muons_ptcut": 30.0})
