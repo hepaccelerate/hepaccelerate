@@ -306,7 +306,7 @@ class BaseDataset(object):
         self.data_host = []
         self.treename = treename
 
-    def preload(self, nthreads=1, verbose=False):
+    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
         t0 = time.time()
         nevents = 0
         for ifn, fn in enumerate(self.filenames):
@@ -321,9 +321,9 @@ class BaseDataset(object):
             if nthreads > 1:
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=nthreads) as executor:
-                    arrs = tt.arrays(self.arrays_to_load, executor=executor)
+                    arrs = tt.arrays(self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
             else:
-                arrs = tt.arrays(self.arrays_to_load)
+                arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
             self.data_host += [arrs]
         t1 = time.time()
         dt = t1 - t0
@@ -456,12 +456,12 @@ class Dataset(BaseDataset):
         s += "  EventVariables({0}, {1})".format(len(self), ", ".join(self.names_eventvars))
         return s    
 
-    def load_root(self, nthreads=1, verbose=False):
-        self.preload(nthreads)
+    def load_root(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
+        self.preload(nthreads, entrystart=entrystart, entrystop=entrystop)
         self.make_objects()
 
-    def preload(self, nthreads=1, verbose=False):
-        super(Dataset, self).preload(nthreads, verbose)
+    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
+        super(Dataset, self).preload(nthreads, verbose, entrystart=entrystart, entrystop=entrystop)
  
     def build_structs(self, prefix):
         ret = []
