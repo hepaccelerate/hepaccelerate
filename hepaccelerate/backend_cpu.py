@@ -34,6 +34,10 @@ def add_spherical(pts, etas, phis, masses):
         e_tot += e
     return cartesian_to_spherical(px_tot, py_tot, pz_tot, e_tot)
 
+@numba.njit(fastmath=True)
+def deltaphi(phi1, phi2):
+    return np.mod(phi1 - phi2 + np.pi, 2*np.pi) - np.pi
+
 """Returns the first index in arr that is equal or larger than val.
 
 We use this function, rather than np.searchsorted to have a similar implementation
@@ -434,10 +438,7 @@ def mask_deltar_first_kernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2,
                 phi2 = np.float32(phis2[idx2])
                 
                 deta = abs(eta1 - eta2)
-                dphi = phi1 - phi2 + math.pi
-                while dphi > 2*math.pi:
-                    dphi -= 2*math.pi
-                dphi -= math.pi
+                dphi = deltaphi(phi1, phi2)
                 
                 passdr = ((deta**2 + dphi**2) < dr2)
                 mask_out[idx1] = mask_out[idx1] | passdr

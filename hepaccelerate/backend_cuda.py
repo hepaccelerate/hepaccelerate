@@ -85,6 +85,21 @@ def cartesian_to_spherical(px, py, pz, e):
     cuda.synchronize()
     return out_pt, out_eta, out_phi, out_mass
 
+#This is a naive implementation, need to fix to use mod, but somehow causes OUT_OF_RESOURCE!
+@cuda.jit(device=True)
+def deltaphi_devfunc(phi1, phi2):
+    dphi = phi1 - phi2
+    out_dphi = 0 
+    if dphi > math.pi:
+        dphi = dphi - 2*math.pi
+        out_dphi = dphi
+    elif (dphi + math.pi) < 0:
+        dphi = dphi + 2*math.pi
+        out_dphi = dphi
+    else:
+        out_dphi = dphi
+    return out_dphi
+
 #Copied from numba source
 @cuda.jit(device=True)
 def searchsorted_inner_right(a, v):
@@ -464,10 +479,7 @@ def mask_deltar_first_cudakernel(etas1, phis1, mask1, offsets1, etas2, phis2, ma
                 phi2 = np.float32(phis2[idx2])
                 
                 deta = abs(eta1 - eta2)
-                dphi = phi1 - phi2 + math.pi
-                while dphi > 2*math.pi:
-                    dphi -= 2*math.pi
-                dphi -= math.pi
+                dphi = deltaphi_devfunc(phi1, phi2)
                 
                 #if first object is closer than dr2, mask element will be *disabled*
                 passdr = ((deta**2 + dphi**2) < dr2)
