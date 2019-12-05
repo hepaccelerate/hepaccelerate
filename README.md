@@ -5,13 +5,12 @@
 # hepaccelerate
 
 - HEP data analysis with [jagged arrays](https://github.com/scikit-hep/awkward-array) using python + [Numba](http://numba.pydata.org/)
-- Use any ntuple, as long as you can open it with [uproot](https://github.com/scikit-hep/uproot)
-  - **your private ntuple**
-  - **CMS NanoAOD**
-- run a billion events to histograms in minutes on a single workstation
+- Use **any ntuple**, as long as you can open it with [uproot](https://github.com/scikit-hep/uproot)
+- analyze a billion events with systematic to histograms in minutes on a single workstation
   - 1e9 events / (50 kHz x 24 threads) ~ 13 minutes
-- weighted histograms, deltaR matching and more
+- weighted histograms, deltaR matching and [more](https://github.com/hepaccelerate/hepaccelerate#kernels)
 - use a CPU or an nVidia CUDA GPU with the same interface!
+- this is **not** an analysis framework, but rather a small set of helpers for fast jagged array processing
 
 **Under active development and use by a few CMS analyses!**
 
