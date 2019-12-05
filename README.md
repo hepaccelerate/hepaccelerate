@@ -197,6 +197,14 @@ results.save_json("out.json")
 
 A more complete CMS analysis example an be found in [analysis_hmumu.py](https://github.com/hepaccelerate/hepaccelerate-cms/blob/master/tests/hmm/analysis_hmumu.py). Currently, for simplicity and in the spirit of prototyping, that repository comes batteries-included with CMS-specific analysis methods.
 
+## Example analysis
+For an example top quark pair analysis on ~200GB of CMS Open Data, please see [full_analysis.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/examples/full_analysis.py). The following methods are implementd using both the CPU and GPU backends:
+- event and object selection
+- on-the-fly variation of jets using mockup jet energy corrections
+- reconstruction of the jet triplet with invariant mass closest to the top quark mass
+- signal-to-background DNN evaluation
+- filling around 20 control histograms with systematic variations
+
 ## Recommendations on data locality and remote data
 In order to make full use of modern CPUs or GPUs, you want to bring the data as close as possible to where the work is done, otherwise you will spend most of the time waiting for the data to arrive rather than actually performing the computations.
 
