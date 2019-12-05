@@ -4,7 +4,14 @@
 
 # hepaccelerate
 
-Simple example kernels with Numba for data analysis with jagged arrays. You can use these to run a full HEP analysis on a billion events to histograms in minutes on a single workstation [1e9 events / (50 kHz x 24 threads) ~ 13 minutes]. Weighted histograms, jet-lepton deltaR matching and more! Works on both the CPU and a CUDA GPU!
+- HEP data analysis with [jagged arrays](https://github.com/scikit-hep/awkward-array) using python + [Numba](http://numba.pydata.org/)
+- Use any ntuple, as long as you can open it with [uproot](https://github.com/scikit-hep/uproot)
+  - **your private ntuple**
+  - **CMS NanoAOD**
+- run a billion events to histograms in minutes on a single workstation
+  - 1e9 events / (50 kHz x 24 threads) ~ 13 minutes
+- weighted histograms, deltaR matching and more
+- use a CPU or an nVidia CUDA GPU with the same interface!
 
 **Under active development and use by a few CMS analyses!**
 
