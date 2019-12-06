@@ -835,8 +835,8 @@ if __name__ == "__main__":
     np.random.seed(0)
     args = parse_args()
     args.use_cuda = use_cuda
-    #for i in range(1):
-    #    download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
+    for i in range(2):
+        download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
 
     import dask
     from dask.distributed import Client, LocalCluster
