@@ -23,16 +23,14 @@ The data processing is typically more complex than standard query languages allo
 At present, these codes mostly operate on individual event records and are parallelized in multi-step data reduction workflows using batch jobs across CPU farms.
 Based on a simplified top quark pair analysis with CMS Open Data, we demonstrate that it is possible to carry out significant parts of a collider analysis at a rate of around a million events per second on a single multicore server with optional GPU acceleration.
 This is achieved by representing HEP event data as sparse arrays and by expressing common analysis operations as parallelizable kernels.
-We find that only a small number of relatively simple functional kernels are needed for a generic HEP analysis.
+We find that only a small number of relatively simple functional kernels are needed for a generic yet fast and portable HEP analysis.
 The approach based on columnar processing of data could speed up and simplify the cycle for delivering physics results at HEP experiments.
 We release the \texttt{hepaccelerate} prototype library as a demonstrator of such methods.
 
 # Introduction
 At the general-purpose experiments of the Large Hadron Collider such as CMS or ATLAS, the final stage of data processing is typically carried out over several terabytes of numerical data residing on a shared cluster of servers via batch processing.
 The data consist of columns of physics related variables or features for the recorded particles such as electrons, muons, jets and photons for each event in billions of rows.
-
 In addition to the columns of purely kinematic information of particle momentum, typically expressed in spherical coordinates of $p_T$, $\eta$, $\phi$ and $M$, each particle carries a number of features that describe the reconstruction details and other high-level properties of the reconstructed particles.
-
 For example, for muons, we might record the number of tracker layers where an associated hit was found, whether or not it reached the outer muon chambers and in simulation the index of the associated generator-level particle, thereby cross-linking two collections.
 A typical event might contain hundreds of measured or simulated particles, such that compressed event sizes for such reduced data formats are on the order of a few kilobytes per event.
 In practice, mixed precision floating points are used to store data only up to experimental precision, such that the number of features per event is on the order of a few hundred.
@@ -55,9 +53,9 @@ The purpose of this report is to document the efforts of processing terabyte-sca
 We release the \texttt{hepaccelerate} library for further discussion [@hepaccelerate].
 
 In the following, we explore the approach based on columnar data analysis using vectorizable kernels in more detail.
-In section \@ref(data-structure), we describe the structure of the data and discuss how data sparsity is handled efficiently.
-We introduce physics-specific computational kernels in section \@ref(computational-kernels) and describe the measured performance under a variety of conditions in section \@ref(performance).
-Finally, we conclude with a summary and outlook in section \@ref(summary).
+In section \ref{data-structure}, we describe the structure of the data and discuss how data sparsity is handled efficiently.
+We introduce physics-specific computational kernels in section \ref{computational-kernels} and describe the measured performance under a variety of conditions in section \ref{performance}.
+Finally, we conclude with a summary and outlook in section \ref{summary}.
 
 # Data structure
 We can represent HEP collider data in the form of two-dimensional matrices, where the rows correspond to events and columns correspond to features in the event such as the momentum components of all measured particles.
@@ -201,10 +199,11 @@ We expect further work on analyses with LHC Open Data to result in more realisti
 We note that ongoing analyses at CMS have already started to adapt to such array-based methods.
 
 We perform two benchmark scenarios of this analysis: one with a partial set of systematic uncertainties to emulate a simpler IO-limited analysis, and one with the full set of systematic uncertainties to test a compute-bound workload.
-The timing results from the benchmark are reported in table \@ref(tab_benchmark) and on Figure \@ref(fig_analysis_benchmark).
+The timing results from the benchmark are reported in table \ref{tab_benchmark} and on Figure \ref{fig:analysisbenchmark}. We demonstrate an example output from this analysis on Figure \ref{fig:analysisexample}.
 Generally, we observe that the simpler analysis can be carried out at rate of approximately 50 kHz / CPU-thread, with the GPU-accelerated version performing about 10x faster than a single CPU thread.
 
-![Projected walltime to analyze 1 billion events for the top quark pair example analysis \label{fig_analysis_benchmark}](plots/analysis_benchmark.pdf){ width=6cm }
+![Projected walltime to analyze 1 billion events for the top quark pair example. \label{fig:analysisbenchmark}](plots/analysis_benchmark.pdf){ width=6cm }
+![One of the resulting plots for the top quark pair example analysis \label{fig:analysisexample}](plots/sumpt.pdf){ width=6cm }
 
 On the other hand, a complex compute-bound analysis where the main workload is repeated around 40x is about 15x faster on a single GPU than on 1 CPU thread.
 This modest advantage compared to the 20-100x improvement in raw kernel performance can be attributed to suboptimal kernel scheduling, as we have observed the GPU utilization peak around 50\% in typical benchmarking. This is partly mitigated by running multiple compute streams on the GPU, we find that running two parallel streams for this example analysis is practical.
