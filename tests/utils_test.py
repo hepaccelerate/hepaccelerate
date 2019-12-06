@@ -10,7 +10,7 @@ USE_CUDA = bool(int(os.environ.get("HEPACCELERATE_CUDA", 0)))
 
 class TestJaggedStruct(unittest.TestCase):
     def test_jaggedstruct(self):
-        attr_names_dtypes = [("Muon_pt", "float64")]
+        attr_names_dtypes = [("Muon_pt", "float32")]
         js = JaggedStruct([0,2,3], {"pt": np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float32)}, "Muon_", np, attr_names_dtypes)
 
 class TestHistogram(unittest.TestCase):
@@ -55,10 +55,6 @@ class TestDataset(unittest.TestCase):
     
     @staticmethod
     def load_dataset(num_iter=1):
-        #fi = uproot.open("data/HZZ.root")
-        #print(fi.keys())
-        #print(fi.get("events").keys())
-        
         datastructures = {
                 "Muon": [
                     ("Muon_Px", "float32"),

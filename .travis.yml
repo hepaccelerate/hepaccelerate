@@ -12,12 +12,7 @@ addons:
     - python-setuptools
 
 install:
-  - pip install awkward
-  - pip install uproot
-  - pip install numpy --upgrade
-  - pip install numba --upgrade
-  - pip install requests
-  - pip install xxhash lz4
+  - pip install hepaccelerate
 
 script:
     - curl -k https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root -o data/nanoaod_test.root

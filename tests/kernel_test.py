@@ -1,18 +1,17 @@
 import time
 import os
-import numba
 import requests
 import unittest
 import numpy as np
 import json
 import sys
+import numba
+import uproot
 
 import hepaccelerate
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
-import uproot
 
 USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
-num_datasets = int(os.environ.get("NUM_DATASETS", 1))
 
 def download_file(filename, url):
     """
@@ -44,7 +43,7 @@ def download_if_not_exists(filename, url):
         return True
     return False
 
-def load_dataset(numpy_lib, num_datasets):
+def load_dataset(numpy_lib, num_iter=1):
     print("loading dataset")
     download_if_not_exists("data/nanoaod_test.root", "https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root")
     datastructures = {
@@ -87,35 +86,75 @@ def load_dataset(numpy_lib, num_datasets):
         ]
     }
     dataset = Dataset(
-        "nanoaod", num_datasets*["./data/nanoaod_test.root"],
+        "nanoaod", num_iter*["./data/nanoaod_test.root"],
         datastructures, treename="Events", datapath="")
   
-    dataset.load_root()
-    print("merging dataset")
-    dataset.merge_inplace()
+    dataset.load_root(verbose=True)
+    dataset.merge_inplace(verbose=True)
     print("dataset has {0} events, {1:.2f} MB".format(dataset.numevents(), dataset.memsize()/1000/1000))
-    print("moving to device")
-    dataset.move_to_device(numpy_lib)
+    dataset.move_to_device(numpy_lib, verbose=True)
     return dataset
+
+@numba.njit
+def verify_set_in_offsets(offsets_np, inds_np, arr_np, target_np):
+    for iev in range(len(offsets_np) - 1):
+        nmu = 0
+        for imu in range(offsets_np[iev], offsets_np[iev+1]):
+            if nmu == inds_np[iev]:
+                if arr_np[imu] != target_np[imu]:
+                    print("Mismatch detected in iev,imu", iev, imu)
+                    return False
+            nmu += 1
+    return True 
+
+@numba.njit
+def verify_get_in_offsets(offsets_np, inds_np, arr_np, target_np, z_np):
+    for iev in range(len(offsets_np) - 1):
+        nmu = 0
+        
+        #Event that had no muons
+        if offsets_np[iev] == offsets_np[iev+1]:
+            if z_np[iev] !=  0:
+                print("Mismatch detected", iev)
+                return False
+
+        for imu in range(offsets_np[iev], offsets_np[iev+1]):
+            if nmu == inds_np[iev]:
+                a = target_np[iev] != z_np[iev]
+                b = z_np[iev] != arr_np[imu]
+                if a or b:
+                    print("Mismatch detected", iev, imu)
+                    return False
+            nmu += 1
+    return True
+
+@numba.njit
+def verify_broadcast(offsets_np, vals_ev_np, vals_obj_np):
+    for iev in range(len(offsets_np) - 1):
+        for iobj in range(offsets_np[iev], offsets_np[iev+1]):
+            if vals_obj_np[iobj] != vals_ev_np[iev]:
+                print("Mismatch detected in ", iev, iobj)
+                return False
+    return True 
 
 class TestKernels(unittest.TestCase):
     @classmethod
     def setUpClass(self):    
         self.NUMPY_LIB, self.ha = choose_backend(use_cuda=USE_CUDA)
         self.use_cuda = USE_CUDA
-        self.dataset = load_dataset(self.NUMPY_LIB, num_datasets)
+        self.dataset = load_dataset(self.NUMPY_LIB)
 
-    def time_kernel(self, test_kernel):
-        test_kernel()
-    
-        t0 = time.time()
-        for i in range(5):
-            n = test_kernel()
-        t1 = time.time()
-    
-        dt = (t1 - t0) / 5.0
-        speed = float(n)/dt
-        return speed
+    #def time_kernel(self, test_kernel):
+    #    test_kernel()
+    #
+    #    t0 = time.time()
+    #    for i in range(5):
+    #        n = test_kernel()
+    #    t1 = time.time()
+    #
+    #    dt = (t1 - t0) / 5.0
+    #    speed = float(n)/dt
+    #    return speed
 
     def test_kernel_sum_in_offsets(self):
         dataset = self.dataset
@@ -156,39 +195,78 @@ class TestKernels(unittest.TestCase):
             sel_mu)
         return muons.numevents()
 
-    def test_kernel_set_in_offsets(self):
+    def test_kernel_set_get_in_offsets(self):
+        print("kernel_set_get_in_offsets")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
+        arr = muons.pt.copy()
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         inds = self.NUMPY_LIB.zeros(muons.numevents(), dtype=self.NUMPY_LIB.int8)
+        
+        #set the pt of the first muon in each event to 1 
         inds[:] = 0
         target = self.NUMPY_LIB.ones(muons.numevents(), dtype=muons.pt.dtype)
+
         self.ha.set_in_offsets(
             muons.offsets,
-            muons.pt,
+            arr,
             inds,
             target,
             sel_ev,
             sel_mu)
 
+        print("checking set_in_offsets")
+        asnp = self.NUMPY_LIB.asnumpy
+        self.assertTrue(verify_set_in_offsets(
+            asnp(muons.offsets),
+            asnp(inds),
+            asnp(arr),
+            asnp(target)
+        ))
+
+        print("checking get_in_offsets")
         z = self.ha.get_in_offsets(
             muons.offsets,
-            muons.pt,
+            arr,
             inds,
             sel_ev,
             sel_mu)
-        z[:] = target[:]
-        
+
+        self.assertTrue(verify_get_in_offsets(
+            asnp(muons.offsets),
+            asnp(inds),
+            asnp(arr),
+            asnp(target), 
+            asnp(z)
+        ))
+ 
         return muons.numevents()
 
     def test_kernel_simple_cut(self):
+        print("kernel_simple_cut")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         sel_mu = muons.pt > 30.0
         return muons.numevents()
+    
+    def test_kernel_broadcast(self):
+        print("kernel_mask_deltar_first")
+        dataset = self.dataset
+        muons = dataset.structs["Muon"][0]
+        met_pt = dataset.eventvars[0]["MET_pt"]
+        met_pt_permuon = self.NUMPY_LIB.zeros(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
+        self.ha.broadcast(muons.offsets, met_pt, met_pt_permuon)
+        self.assertTrue(verify_broadcast(
+            self.NUMPY_LIB.asnumpy(muons.offsets),
+            self.NUMPY_LIB.asnumpy(met_pt),
+            self.NUMPY_LIB.asnumpy(met_pt_permuon),
+        ))
+
+        return muons.numevents()
 
     def test_kernel_mask_deltar_first(self):
+        print("kernel_mask_deltar_first")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         jet = dataset.structs["Jet"][0]
@@ -201,9 +279,12 @@ class TestKernels(unittest.TestCase):
             {"offsets": jet.offsets, "eta": jet.eta, "phi": jet.phi},
             sel_jet, 0.3
         )
+        self.assertEqual(len(muons_matched_to_jet), muons.numobjects())
+        self.assertEqual(muons_matched_to_jet.sum(), 1698542)
         return muons.numevents()
         
     def test_kernel_select_opposite_sign(self):
+        print("kernel_select_opposite_sign")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
@@ -213,88 +294,74 @@ class TestKernels(unittest.TestCase):
         return muons.numevents()
     
     def test_kernel_histogram_from_vector(self):
+        print("kernel_histogram_from_vector")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
-        weights = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
-        self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32))
+        weights = 2*self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
+        ret = self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32))
+        self.assertEqual(ret[0][20], 112024.0)
+        self.assertEqual(ret[1][20], 2*112024.0)
+        self.assertEqual(ret[0][0], 0)
+        self.assertEqual(ret[0][-1], 7856.0)
+
+        self.assertEqual(ret[0].sum(), 3894188.0)
+        self.assertEqual(ret[1].sum(), 2*3894188.0)
+        return muons.numevents()
+    
+    def test_kernel_histogram_from_vector_masked(self):
+        print("kernel_histogram_from_vector_masked")
+        dataset = self.dataset
+        muons = dataset.structs["Muon"][0]
+        weights = 2*self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
+        mask = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
+        mask[:100] = False
+        ret = self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32), mask=mask)
+        self.assertEqual(ret[0][20], 112014.0)
+        self.assertEqual(ret[1][20], 2*112014.0)
+        self.assertEqual(ret[0][0], 0)
+        self.assertEqual(ret[0][-1], 7856.0)
+
+        self.assertEqual(ret[0].sum(), 3893988.0)
+        self.assertEqual(ret[1].sum(), 2*3893988.0)
         return muons.numevents()
 
     def test_kernel_histogram_from_vector_several(self):
+        print("kernel_histogram_from_vector_several")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
-        mask = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
-        weights = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.float32)
+        mask = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
+        mask[:100] = False
+        weights = 2*self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
         variables = [
             (muons.pt, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32)),
             (muons.eta, self.NUMPY_LIB.linspace(-4,4,100, dtype=self.NUMPY_LIB.float32)),
             (muons.phi, self.NUMPY_LIB.linspace(-4,4,100, dtype=self.NUMPY_LIB.float32)),
             (muons.mass, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32)),
-            (muons.charge, self.NUMPY_LIB.linspace(-1,1,3, dtype=self.NUMPY_LIB.float32)),
+            (muons.charge, self.NUMPY_LIB.array([-1, 0, 1, 2], dtype=self.NUMPY_LIB.float32)),
         ]
         ret = self.ha.histogram_from_vector_several(variables, weights, mask)
+       
+        #weights, weights2, bins 
+        self.assertEqual(len(ret), 3)
+       
+        #number of individual histograms
+        self.assertEqual(len(ret[0]), len(variables))
+        
+        #bin contents
+        for ivar in range(len(variables)):
+            self.assertEqual(len(ret[0][ivar]), len(variables[ivar][1]) - 1)
+       
+        #bin contents
+        for ivar in range(len(variables)):
+            ret2 = self.ha.histogram_from_vector(variables[ivar][0], weights, variables[ivar][1], mask=mask)
+            for ibin in range(len(ret[0][ivar])):
+                self.assertEqual(ret[0][ivar][ibin], ret2[0][ibin])
+                self.assertEqual(ret[1][ivar][ibin], ret2[1][ibin])
+
         return muons.numevents()
 
-    def test_timing(self):
-        with open("kernel_benchmarks.txt", "a") as of:
-            for i in range(5):
-                ret = self.run_timing()
-                of.write(json.dumps(ret) + '\n')
-
-    def run_timing(self):
-        ds = self.dataset
-
-        print("Testing memory transfer speed")
-        t0 = time.time()
-        for i in range(5):
-            ds.move_to_device(self.NUMPY_LIB)
-        t1 = time.time()
-        dt = (t1 - t0)/5.0
-
-        ret = {
-            "use_cuda": self.use_cuda, "num_threads": numba.config.NUMBA_NUM_THREADS,
-            "use_avx": numba.config.ENABLE_AVX, "num_events": ds.numevents(),
-            "memsize": ds.memsize()
-        }
-
-        print("Memory transfer speed: {0:.2f} MHz, event size {1:.2f} bytes, data transfer speed {2:.2f} MB/s".format(
-            ds.numevents() / dt / 1000.0 / 1000.0, ds.eventsize(), ds.memsize()/dt/1000/1000))
-        ret["memory_transfer"] = ds.numevents() / dt / 1000.0 / 1000.0
-
-        t = self.time_kernel(self.test_kernel_sum_in_offsets)
-        print("sum_in_offsets {0:.2f} MHz".format(t/1000/1000))
-        ret["sum_in_offsets"] = t/1000/1000
-    
-        t = self.time_kernel(self.test_kernel_simple_cut)
-        print("simple_cut {0:.2f} MHz".format(t/1000/1000))
-        ret["simple_cut"] = t/1000/1000
-    
-        t = self.time_kernel(self.test_kernel_max_in_offsets)
-        print("max_in_offsets {0:.2f} MHz".format(t/1000/1000))
-        ret["max_in_offsets"] = t/1000/1000
-
-        t = self.time_kernel(self.test_kernel_get_in_offsets)
-        print("get_in_offsets {0:.2f} MHz".format(t/1000/1000))
-        ret["get_in_offsets"] = t/1000/1000
-
-        t = self.time_kernel(self.test_kernel_mask_deltar_first)
-        print("mask_deltar_first {0:.2f} MHz".format(t/1000/1000))
-        ret["mask_deltar_first"] = t/1000/1000
-        
-        t = self.time_kernel(self.test_kernel_select_opposite_sign)
-        print("select_muons_opposite_sign {0:.2f} MHz".format(t/1000/1000))
-        ret["select_muons_opposite_sign"] = t/1000/1000
-        
-        t = self.time_kernel(self.test_kernel_histogram_from_vector)
-        print("histogram_from_vector {0:.2f} MHz".format(t/1000/1000))
-        ret["histogram_from_vector"] = t/1000/1000
-        
-        t = self.time_kernel(self.test_kernel_histogram_from_vector_several)
-        print("histogram_from_vector_several {0:.2f} MHz".format(t/1000/1000))
-        ret["histogram_from_vector_several"] = t/1000/1000
-        
-        return ret
-
     def test_coordinate_transformation(self):
+        print("coordinate_transformation")
         #Don't test the scalar ops on GPU
         if not USE_CUDA:
             px, py, pz, e = self.ha.spherical_to_cartesian(100.0, 0.2, 0.4, 100.0)
@@ -329,4 +396,7 @@ class TestKernels(unittest.TestCase):
             self.assertAlmostEqual(mass_tot, 126.24366428840153)
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--debug" in sys.argv:
+        unittest.findTestCases(sys.modules[__name__]).debug()
+    else:
+        unittest.main()

@@ -309,6 +309,10 @@ class BaseDataset(object):
     def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
         t0 = time.time()
         nevents = 0
+
+        #Print a warning if a slow compression method is used
+        compression_warning = True
+
         for ifn, fn in enumerate(self.filenames):
             #Empty ROOT file
             if os.stat(fn).st_size == 0:
@@ -316,6 +320,14 @@ class BaseDataset(object):
                 self.data_host += [{bytes(k, encoding="ascii"): awkward.JaggedArray([], [], []) for k in self.arrays_to_load}]
                 continue
             fi = uproot.open(fn)
+
+            if compression_warning and not "lz4" in str(fi._context.compression):  
+                print("Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
+                    fn,
+                    fi._context.compression
+                ))
+                compression_warning = False
+ 
             tt = fi.get(self.treename)
             nevents += len(tt)
             if nthreads > 1:
@@ -372,8 +384,9 @@ class Dataset(BaseDataset):
 
         self.func_filename_precompute = None
 
-    def merge_inplace(self):
+    def merge_inplace(self, verbose=True):
 
+        t0 = time.time()
         #nothing to do
         if len(self.filenames) == 1:
             return
@@ -388,23 +401,6 @@ class Dataset(BaseDataset):
 
         new_structs = {}
         for structname in self.names_structs:
-            #jags = {}
-            #ifile = 0
-            #for s in self.structs[structname]:
-            #    for attr_name in s.attrs_data.keys():
-            #        if not attr_name in jags.keys():
-            #            jags[attr_name] = []
-            #        j = awkward.JaggedArray.fromoffsets(s.offsets, s.attrs_data[attr_name])
-            #        jags[attr_name] += [j]
-            #    ifile += 1
-
-            #offsets = None
-            #attrs_data = {}
-            #for k in jags.keys():
-            #    j = awkward.JaggedArray.concatenate(jags[k])
-            #    attrs_data[k] = j.content
-            #    offsets = j.offsets
-            #js = JaggedStruct(offsets, attrs_data, s.prefix, s.numpy_lib, s.attr_names_dtypes)
             s0 = self.structs[structname][0]
             js = s0.concatenate(self.structs[structname][1:])
             new_structs[structname] = [js]
@@ -415,13 +411,25 @@ class Dataset(BaseDataset):
         self.numfiles = 1
         numevents_after = self.numevents()
         assert(numevents_after == numevents_before)
+        
+        t1 = time.time()
+        dt = t1 - t0
+        if verbose:
+            print("merge_inplace: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
 
-    def move_to_device(self, numpy_lib):
+    def move_to_device(self, numpy_lib, verbose=False):
+        t0 = time.time()
+
         for ifile in range(self.numfiles):
             for structname in self.names_structs:
                 self.structs[structname][ifile].move_to_device(numpy_lib)
             for evvar in self.names_eventvars:
                 self.eventvars[ifile][evvar] = numpy_lib.array(self.eventvars[ifile][evvar])
+
+        t1 = time.time()
+        dt = t1 - t0
+        if verbose:
+            print("move_to_device: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
 
     def memsize(self):
         tot = 0
@@ -457,8 +465,8 @@ class Dataset(BaseDataset):
         return s    
 
     def load_root(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
-        self.preload(nthreads, entrystart=entrystart, entrystop=entrystop)
-        self.make_objects()
+        self.preload(nthreads, entrystart=entrystart, entrystop=entrystop, verbose=verbose)
+        self.make_objects(verbose=verbose)
 
     def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
         super(Dataset, self).preload(nthreads, verbose, entrystart=entrystart, entrystop=entrystop)
@@ -516,7 +524,7 @@ class Dataset(BaseDataset):
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("Made objects in {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
+            print("make_objects: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
 
     def analyze(self, analyze_data, verbose=False, **kwargs):
         t0 = time.time()

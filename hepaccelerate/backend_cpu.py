@@ -85,7 +85,6 @@ def searchsorted_left(vals, bins, inds_out):
 
 @numba.njit(fastmath=True, parallel=True)
 def fill_histogram_several(data, weights, mask, bins, nbins, nbins_sum, out_w, out_w2):
-  
     #number of histograms to fill 
     ndatavec = data.shape[0]
  
@@ -346,7 +345,7 @@ def get_in_offsets_kernel(offsets, content, indices, mask_rows, mask_content, ou
     assert(len(offsets) - 1 == len(indices))
     assert(len(out) == len(offsets) - 1)
 
-    for iev in numba.prange(offsets.shape[0]-1):
+    for iev in numba.prange(offsets.shape[0] - 1):
         if not mask_rows[iev]:
             continue
         start = offsets[iev]
@@ -366,8 +365,8 @@ def get_in_offsets_kernel(offsets, content, indices, mask_rows, mask_content, ou
 Can be used to set e.g. the pT of the second jet in each event to a value from a contiguous array.
 
 Args:
-    content: input data array, N elements
     offsets: event offset array, M+1 elements
+    content: input data array, N elements
     indices: indices to set in events, M elements
     target: target values to set in events, M elements
     mask_rows: events/rows to consider, M elements
@@ -375,7 +374,7 @@ Args:
 """
 @numba.njit(parallel=True, fastmath=True)
 def set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_content):
-    for iev in numba.prange(offsets.shape[0]-1):
+    for iev in numba.prange(offsets.shape[0] - 1):
         if not mask_rows[iev]:
             continue
         start = offsets[iev]
@@ -390,8 +389,16 @@ def set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_con
                 else:
                     index_to_set += 1
 
+"""Converts an array of N per-event values to an array of M per-object values using broadcasting.
+
+Args:
+    offsets: event offset array, M+1 elements
+    content: input data array of per-event values, M elements
+    out: output array of per-object values, N elements
+"""
 @numba.njit(parallel=True, fastmath=True)
 def broadcast(offsets, content, out):
+    assert(offsets.shape[0] - 1 == content.shape[0])
     for iev in numba.prange(offsets.shape[0]-1):
         start = offsets[iev]
         end = offsets[iev + 1]
@@ -595,6 +602,11 @@ def histogram_from_vector_several(variables, weights, mask):
     for array, bins in variables:
         all_arrays += [array]
         all_bins += [bins]
+
+    for a in all_arrays:
+        assert(a.shape == all_arrays[0].shape)
+        assert(a.shape == weights.shape)
+        assert(a.shape == mask.shape)
 
     max_bins = max([b.shape[0] for b in all_bins])
     stacked_array = np.stack(all_arrays, axis=0)

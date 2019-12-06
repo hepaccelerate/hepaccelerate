@@ -12,7 +12,7 @@ from keras.optimizers import Adam
 import numpy as np
 from sklearn.model_selection import KFold
 
-def layer(din, n_units, do_dropout=True):
+def layer(din, n_units, do_dropout=False):
     d = Dense(n_units)(din)
     d = LeakyReLU(alpha=0.2)(d)
     if do_dropout:
@@ -39,6 +39,7 @@ if __name__ == "__main__":
     y = np.vstack(ys)
     
     shuf = np.random.permutation(len(X))
+    X[np.isnan(X)] = 0
     X = X[shuf]
     y = y[shuf]
     
@@ -52,7 +53,7 @@ if __name__ == "__main__":
     nfeatures = X.shape[1]
     ntrain = int(0.8*len(X))
     
-    kf = KFold(n_splits=5)
+    kf = KFold(n_splits=2)
     ikf = 0
     for train_index, test_index in kf.split(X):
         inp = Input(shape=(nfeatures, ))

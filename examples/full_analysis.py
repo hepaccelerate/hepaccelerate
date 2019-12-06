@@ -16,9 +16,10 @@ import numpy as np
 use_cuda = bool(int(os.environ.get("HEPACCELERATE_CUDA", 0)))
 
 #save training arrays for DNN
-save_arrays = True
+save_arrays = False
 
-class MyPlugin(WorkerPlugin):
+#Run once on each worker to load various configuration info and initialize tensorflow correctly
+class InitializerPlugin(WorkerPlugin):
     def __init__(self, args):
         self.args = args
         pass
@@ -69,7 +70,7 @@ class DNNModel:
     def __init__(self, NUMPY_LIB):
         import keras
         self.models = []
-        for i in range(1):
+        for i in range(2):
             self.models += [keras.models.load_model("data/model_kf{0}.h5".format(i))]
         self.models[0].summary()
         self.NUMPY_LIB = NUMPY_LIB
@@ -318,6 +319,7 @@ def update_histograms_systematic(hists, hist_name, systematic_name, target_histo
         hists[hist_name].update(target_histogram)
 
 def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
+    from keras.backend.tensorflow_backend import set_session
     this_worker = get_worker()
     NUMPY_LIB = this_worker.NUMPY_LIB
     ha = this_worker.ha
@@ -493,17 +495,19 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
             inv_mass_3j, best_btag, sumpt_jets
         ]).T
        
-        print("evaluating DNN model") 
-        #pred = dnnmodel.eval(arr, use_cuda)
-        #pred = NUMPY_LIB.vstack(pred).T
-        #pred_m = NUMPY_LIB.mean(pred, axis=1)
-        #pred_s = NUMPY_LIB.std(pred, axis=1)
+        #print("evaluating DNN model") 
+        with this_worker.graph.as_default():
+            set_session(this_worker.session) 
+            pred = dnnmodel.eval(arr, use_cuda)
+            pred = NUMPY_LIB.vstack(pred).T
+            pred_m = NUMPY_LIB.mean(pred, axis=1)
+            pred_s = NUMPY_LIB.std(pred, axis=1)
 
         fill_histograms_several(
             hists, systname, "hist__nmu1_njetge3_nbjetge1__",
             [
-                #(pred_m, "pred_m", histo_bins["dnnpred_m"]),
-                #(pred_s, "pred_s", histo_bins["dnnpred_s"]),
+                (pred_m, "pred_m", histo_bins["dnnpred_m"]),
+                (pred_s, "pred_s", histo_bins["dnnpred_s"]),
                 (nmu, "nmu", histo_bins["nmu"]),
                 (nel, "nel", histo_bins["nmu"]),
                 (njet, "njet", histo_bins["njet"]),
@@ -570,7 +574,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     print("run_analysis: {0:.2E} events in {1:.2f} seconds, speed {2:.2E} Hz".format(dataset.numevents(), t1 - t0, speed))
     return res
 
-def load_dataset(datapath, filenames, ismc, nthreads, do_skim, NUMPY_LIB, ha):
+def load_dataset(datapath, filenames, ismc, nthreads, do_skim, NUMPY_LIB, ha, entrystart, entrystop):
     ds = hepaccelerate.Dataset(
         "dataset",
         filenames,
@@ -584,7 +588,7 @@ def load_dataset(datapath, filenames, ismc, nthreads, do_skim, NUMPY_LIB, ha):
     #Load the ROOT files
     print("Loading dataset from {0} files".format(len(ds.filenames)))
     t0 = time.time()
-    ds.preload(nthreads=nthreads)
+    ds.preload(nthreads=nthreads, entrystart=entrystart, entrystop=entrystop)
     t1 = time.time()
     ds.make_objects()
     timing_results["load_root"] = t1 - t0
@@ -753,11 +757,11 @@ def multiprocessing_initializer(args, gpu_id=None):
         config.gpu_options.per_process_gpu_memory_fraction = gpu_memory_fraction
 
     from keras.backend.tensorflow_backend import set_session
-    set_session(tf.Session(config=config))
+    this_worker.session = tf.Session(config=config)
+    set_session(this_worker.session)
     
     NUMPY_LIB, ha = hepaccelerate.choose_backend(args.use_cuda)
-    #this_worker.dnnmodel = DNNModel(NUMPY_LIB)
-    this_worker.dnnmodel = None
+    this_worker.dnnmodel = DNNModel(NUMPY_LIB)
     this_worker.NUMPY_LIB = NUMPY_LIB
     this_worker.ha = ha
     if args.use_cuda:
@@ -765,6 +769,7 @@ def multiprocessing_initializer(args, gpu_id=None):
     else:
         import cpu_kernels as kernels
     this_worker.kernels = kernels
+    this_worker.graph = tf.get_default_graph()
 
     #Create random vectors as placeholders of lepton pt event weights
     this_worker.electron_weights = NUMPY_LIB.zeros((100, 2), dtype=NUMPY_LIB.float32)
@@ -782,12 +787,12 @@ def multiprocessing_initializer(args, gpu_id=None):
         this_worker.jecs_down[:, i] = -0.3*(float(i+1)/float(args.njec)) 
 
 def load_and_analyze(args_tuple):
-    fn, args, dataset, ismc, ichunk = args_tuple
+    fn, args, dataset, entrystart, entrystop, ismc, ichunk = args_tuple
     this_worker = get_worker()
     NUMPY_LIB, ha = hepaccelerate.choose_backend(args.use_cuda)
     
     print("Loading {0}".format(fn))
-    ds, timing_results = load_dataset(args.datapath, fn, ismc, args.nthreads, args.skim, NUMPY_LIB, ha)
+    ds, timing_results = load_dataset(args.datapath, fn, ismc, args.nthreads, args.skim, NUMPY_LIB, ha, entrystart, entrystop)
     t0 = time.time()
     ret = run_analysis(ds, "{0}_{1}".format(dataset, ichunk), this_worker.dnnmodel, args.use_cuda, ismc)
     t1 = time.time()
@@ -834,9 +839,9 @@ if __name__ == "__main__":
     from dask.distributed import Client, LocalCluster
     from distributed import get_worker
 
-    cluster = LocalCluster(n_workers=args.njobs, threads_per_worker=1, memory_limit=0, nanny=None)
-    client = Client(cluster)
-    plugin = MyPlugin(args)
+    print("Trying to connect to dask cluster, please start it with examples/dask_cluster.sh or examples/dask_cluster_gpu.sh")
+    client = Client('127.0.0.1:8786')
+    plugin = InitializerPlugin(args)
     client.register_worker_plugin(plugin)
  
     print("Processing all datasets")
@@ -848,13 +853,22 @@ if __name__ == "__main__":
         if(len(filenames) == 0):
             raise Exception("Could not find any filenames for dataset={0}: {{datapath}}/{{fn_pattern}}={1}/{2}".format(dataset, args.datapath, fn_pattern))
         ichunk = 0
-        for fn in chunks(filenames, 1):
-            arglist += [(fn, args, dataset, ismc, ichunk)]
-            ichunk += 1
+        for fn in filenames:
+            nev = len(uproot.open(fn).get("Events"))
+            #Process in chunks of 500k events to limit peak memory usage
+            for evs_chunk in chunks(range(nev), 500000):
+                entrystart = evs_chunk[0] 
+                entrystop = evs_chunk[-1] + 1
+                arglist += [([fn], args, dataset, entrystart, entrystop, ismc, ichunk)]
+                ichunk += 1
 
     print("Processing {0} arguments".format(len(arglist)))
+
+    from dask.diagnostics import ProgressBar
     futures = client.map(load_and_analyze, arglist, retries=3)
+    prog = ProgressBar(futures)
     ret = [fut.result() for fut in futures]
+
     walltime_t1 = time.time()
 
     print("Merging outputs")

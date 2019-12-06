@@ -15,8 +15,8 @@
 **Under active development and use by a few CMS analyses!**
 
 <p float="left">
-  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/images/kernel_benchmarks.png" alt="Kernel benchmarks" width="300"/>
-  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/images/analysis_scaling.png" alt="Analysis scaling" width="300"/>
+  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/paper/plots/kernel_benchmarks.png" alt="Kernel benchmarks" width="300"/>
+  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/paper/plots/analysis_benchmark.png" alt="Analysis benchmarks" width="300"/>
 </p>
 
 More details are available:
@@ -25,70 +25,30 @@ More details are available:
 
 ## Installation
 
-~~~
+The library can be installed using `pip` in python >3.6:
+```bash
 pip install hepaccelerate
-~~~
+```
 
-Required python libraries:
- - python 3
- - uproot
- - awkward-array
- - numba (>0.43)
+You may also clone this library as a part of your project, in which case you will need:
+ - `pip install uproot numba xxhash lz4`
 
-Optional libraries:
- - cupy
- - cudatoolkit
- - dask
+Optional libraries, which may be easier to install with conda:
+ - `cupy` for GPU support
+ - `cudatoolkit` for GPU support
+ - `dask` for running the large-scale example
+ - `xxhash` for LZ4 support
 
 ## Documentation
 This code consists of two parts which can be used independently:
-  - the accelerated HEP kernels that run on jagged data in [backend_cpu.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cpu.py) and [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
+  - the accelerated HEP kernels that run on jagged data:
+    - multithreaded CPU: [backend_cpu.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cpu.py)
+    - CUDA GPU: [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
 ## Kernels
 
-The kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray`
-```python
-import uproot, os
-use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0))==1
-
-if use_cuda:
-  import hepaccelerate.backend_cuda as ha
-  import cupy as np
-  import numpy
-else:
-  import hepaccelerate.backend_cpu as ha
-  import numpy as np
-  np.asnumpy = np.array
-
-fi = uproot.open("data/nanoaod_test.root")
-tt = fi.get("aod2nanoaod/Events")
-jet_eta = tt.array("Jet_eta")
-jet_phi = tt.array("Jet_phi")
-jet_pt = tt.array("Jet_pt")
-
-lep_eta = tt.array("Muon_eta")
-lep_phi = tt.array("Muon_phi")
-lep_pt = tt.array("Muon_pt")
-
-jets = {"pt": np.array(jet_pt.content), "eta": np.array(jet_eta.content), "phi": np.array(jet_phi.content), "offsets": np.array(jet_pt.offsets)}
-sel_jets = jet_pt.content > 30.0
-
-leptons = {"pt": np.array(lep_pt.content), "eta": np.array(lep_eta.content), "phi": np.array(lep_phi.content), "offsets": np.array(lep_pt.offsets)}
-sel_leptons = lep_pt.content > 20.0
-
-#run multithreaded CPU kernels
-max_jet_pt = ha.max_in_offsets(jets["offsets"], jets["pt"])
-
-#compare with awkward-array
-m1 = np.asnumpy(max_jet_pt)
-m2 = jet_pt.max()
-m2[numpy.isinf(m2)] = 0
-assert(numpy.all(m1 == m2))
-
-masked_jets = ha.mask_deltar_first(jets, sel_jets, leptons, sel_leptons, 0.5)
-print("kept {0} jets out of {1}".format(masked_jets.sum(), len(masked_jets)))
-```
+The jagged kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray`.
 
 We have implemented the following kernels for both the CPU and CUDA backends:
   - `ha.min_in_offsets(offsets, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
@@ -107,95 +67,13 @@ We have implemented the following kernels for both the CPU and CUDA backends:
 ## Usage
 
 This is a minimal example from [examples/simple_hzz.py](../blob/master/examples/simple_hzz.py), which can be run from this repository directly using
-~~~
+
+```bash
 PYTHONPATH=. python3 examples/simple_hzz.py
+
+#on GPU
 PYTHONPATH=. HEPACCELERATE_CUDA=1 python3 examples/simple_hzz.py
-~~~
-
-```python
-#usr/bin/env python3
-#Run as PYTHONPATH=. python3 examples/simple_hzz.py
-
-#In case you use CUDA, you may have to find the libnvvm.so on your system manually
-import os
-os.environ["NUMBAPRO_NVVM"] = "/usr/local/cuda/nvvm/lib64/libnvvm.so"
-os.environ["NUMBAPRO_LIBDEVICE"] = "/usr/local/cuda/nvvm/libdevice/"
-import numba
-
-import hepaccelerate
-from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
-
-#choose whether or not to use the GPU backend
-use_cuda = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
-NUMPY_LIB, ha = choose_backend(use_cuda=use_cuda)
-
-#define our analysis function
-def analyze_data_function(data, parameters):
-    ret = Results()
-
-    num_events = data["num_events"]
-    muons = data["Muon"]
-    mu_pt = NUMPY_LIB.sqrt(muons.Px**2 + muons.Py**2)
-    muons.attrs_data["pt"] = mu_pt
-
-    mask_events = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
-    mask_muons_passing_pt = muons.pt > parameters["muons_ptcut"]
-    num_muons_event = ha.sum_in_offsets(muons, mask_muons_passing_pt, mask_events, muons.masks["all"], NUMPY_LIB.int8)
-    mask_events_dimuon = num_muons_event == 2
-
-    #get the leading muon pt in events that have exactly two muons
-    inds = NUMPY_LIB.zeros(num_events, dtype=NUMPY_LIB.int32)
-    leading_muon_pt = ha.get_in_offsets(muons.pt, muons.offsets, inds, mask_events_dimuon, mask_muons_passing_pt)
-
-    #compute a weighted histogram
-    weights = NUMPY_LIB.ones(num_events, dtype=NUMPY_LIB.float32)
-    bins = NUMPY_LIB.linspace(0,300,101)
-    hist_muons_pt = Histogram(*ha.histogram_from_vector(leading_muon_pt[mask_events_dimuon], weights[mask_events_dimuon], bins))
-
-    #save it to the output
-    ret["hist_leading_muon_pt"] = hist_muons_pt
-    return ret
-
-#Load this input file
-filename = "data/HZZ.root"
-
-#Predefine which branches to read from the TTree and how they are grouped to objects
-#This will be verified against the actual ROOT TTree when it is loaded
-datastructures = {
-            "Muon": [
-                ("Muon_Px", "float32"),
-                ("Muon_Py", "float32"),
-                ("Muon_Pz", "float32"), 
-                ("Muon_E", "float32"),
-                ("Muon_Charge", "int32"),
-                ("Muon_Iso", "float32")
-            ],
-            "Jet": [
-                ("Jet_Px", "float32"),
-                ("Jet_Py", "float32"),
-                ("Jet_Pz", "float32"),
-                ("Jet_E", "float32"),
-                ("Jet_btag", "float32"),
-                ("Jet_ID", "bool")
-            ],
-            "EventVariables": [
-                ("NPrimaryVertices", "int32"),
-                ("triggerIsoMu24", "bool"),
-                ("EventWeight", "float32")
-            ]
-    }
-
-dataset = Dataset("HZZ", [filename], datastructures, treename="events")
-
-#load data to memory
-dataset.load_root()
-
-#process data
-results = dataset.analyze(analyze_data_function, verbose=True, parameters={"muons_ptcut": 30.0})
-results.save_json("out.json")
 ```
-
-A more complete CMS analysis example an be found in [analysis_hmumu.py](https://github.com/hepaccelerate/hepaccelerate-cms/blob/master/tests/hmm/analysis_hmumu.py). Currently, for simplicity and in the spirit of prototyping, that repository comes batteries-included with CMS-specific analysis methods.
 
 ## Example analysis
 For an example top quark pair analysis on ~200GB of CMS Open Data, please see [full_analysis.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/examples/full_analysis.py). The following methods are implementd using both the CPU and GPU backends:
@@ -208,7 +86,8 @@ For an example top quark pair analysis on ~200GB of CMS Open Data, please see [f
 ## Recommendations on data locality and remote data
 In order to make full use of modern CPUs or GPUs, you want to bring the data as close as possible to where the work is done, otherwise you will spend most of the time waiting for the data to arrive rather than actually performing the computations.
 
-With CMS NanoAOD with event sizes of 1-2 kB/event, 1 million events is approximately 1-2 GB on disk. Therefore, you can fit a significant amount of data used in a HEP analysis on a commodity SSD. In order to copy the data to your local disk, use grid tools such as `gfal-copy` or even `rsync` to fetch it from your nearest Tier2. Preserving the filename structure (`/store/...`) will allow you to easily run the same code on multiple sites.
+With CMS NanoAOD with event sizes of 1-2 kB/event, 1 million events is approximately 1-2 GB on disk. Therefore, you can fit a significant amount of data used in a HEP analysis on a commodity SSD.
+In order to copy the data to your local disk, use grid tools such as `gfal-copy` or even `rsync` to fetch it from your nearest Tier2. Preserving the filename structure (`/store/...`) will allow you to easily run the same code on multiple sites.
 
 ## Frequently asked questions
 

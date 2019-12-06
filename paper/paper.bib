@@ -1,0 +1,190 @@
+@article{Antcheva:2009zz,
+      author         = "Antcheva, I. and others",
+      title          = "{ROOT: A C++ framework for petabyte data storage,
+                        statistical analysis and visualization}",
+      journal        = "Comput. Phys. Commun.",
+      volume         = "180",
+      year           = "2009",
+      pages          = "2499-2512",
+      doi            = "10.1016/j.cpc.2009.08.005",
+      eprint         = "1508.07749",
+      archivePrefix  = "arXiv",
+      primaryClass   = "physics.data-an",
+      reportNumber   = "FERMILAB-PUB-09-661-CD",
+      SLACcitation   = "%%CITATION = ARXIV:1508.07749;%%"
+}
+
+@software{hepaccelerate,
+  author       = {Joosep Pata},
+  title        = {{jpata/hepaccelerate: v0.2.0}},
+  month        = oct,
+  year         = 2019,
+  publisher    = {Zenodo},
+  version      = {v0.2.0},
+  doi          = {10.5281/zenodo.3491423},
+  url          = {https://doi.org/10.5281/zenodo.3491423}
+}
+
+@software{uproot,
+  author       = {Pivarski, Jim and Das, Pratyush and others},
+  title        = {uproot},
+  month        = oct,
+  year         = 2019,
+  url          = {https://github.com/scikit-hep/uproot}
+}
+
+@software{awkward,
+  author       = {Pivarski, Jim and Escott, Charles and others},
+  title        = {awkward-array},
+  month        = oct,
+  year         = 2019,
+  url          = {https://github.com/scikit-hep/awkward-array}
+}
+
+@inproceedings{Lam:2015:NLP:2833157.2833162,
+ author = {Lam, Siu Kwan and Pitrou, Antoine and Seibert, Stanley},
+ title = {{Numba: A LLVM-based Python JIT Compiler}},
+ booktitle = {{Proceedings of the Second Workshop on the LLVM Compiler Infrastructure in HPC}},
+ series = {LLVM '15},
+ year = {2015},
+ isbn = {978-1-4503-4005-2},
+ location = {Austin, Texas},
+ pages = {7:1--7:6},
+ articleno = {7},
+ numpages = {6},
+ url = {http://doi.acm.org/10.1145/2833157.2833162},
+ doi = {10.1145/2833157.2833162},
+ acmid = {2833162},
+ publisher = {ACM},
+ address = {New York, NY, USA},
+ keywords = {LLVM, Python, compiler},
+} 
+
+@article{Bockelman_2018,
+  doi = {10.1088/1742-6596/1085/3/032012},
+  url = {https://doi.org/10.1088%2F1742-6596%2F1085%2F3%2F032012},
+  year = 2018,
+  month = {sep},
+  publisher = {{IOP} Publishing},
+  volume = {1085},
+  pages = {032012},
+  author = {B Bockelman and Z Zhang and J Pivarski},
+  title = {Optimizing {ROOT} {IO} For Analysis},
+  journal = {Journal of Physics: Conference Series},
+  abstract = {The ROOT I/O (RIO) subsystem is foundational to most HEP experiments - it provides a file format, a set of APIs/semantics, and a reference implementation in C++. It is often found at the base of an experimentâs framework and is used to serialize the experimentâs data; in the case of an LHC experiment, this may be hundreds of petabytes of files! Individual physicists will further use RIO to perform their end-stage analysis, reading from intermediate files they generate from experiment data.
+RIO is thus incredibly flexible: it must serve as a file format for archival (optimized for space) and for working data (optimized for read speed). To date, most of the technical work has focused on improving the former use case. We present work designed to help improve RIO for analysis. We analyze the real-world impact of a compression algorithm LZ4 to decrease decompression times (and the corresponding cost in disk space). We introduce new APIs that read RIO data in bulk, removing the per-event overhead of a C++ function call. We compare the performance with the existing RIO APIs for simple structure data and show how this can be complimentary with efforts to improve the parallelism of the RIO stack.}
+}
+
+@software{coffea,
+  author       = {Lindsey Gray and
+                  Nicholas Smith and
+                  Andrzej Novak and
+                  Paul Gessinger and
+                  Joosep Pata and
+                  Anna Woodard and
+                  Mauro Verzetti and
+                  Andreas and
+                  Pratyush Das and
+                  Nick Amin and
+                  Lukas and
+                  areinsvo},
+  title        = {CoffeaTeam/coffea v0.6.21},
+  month        = dec,
+  year         = 2019,
+  publisher    = {Zenodo},
+  version      = {v0.6.21},
+  doi          = {10.5281/zenodo.3563187},
+  url          = {https://doi.org/10.5281/zenodo.3563187}
+}
+
+@misc{cmsopendata-mc1,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset TTJets\_HadronicMGDecays\_8TeV-madgraph in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.42GY.2VJI},
+}
+
+@misc{cmsopendata-mc2,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset TTJets\_SemiLeptMGDecays\_TuneP11mpiHi\_8TeV-madgraph-tauola in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.2DSE.HYDF},
+}
+
+@misc{cmsopendata-mc3,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset TTJets_FullLeptMGDecays\_TuneP11TeV\_8TeV-madgraph-tauola in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.7RZ3.0BXP},
+}
+
+@misc{cmsopendata-mc4,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset DYJetsToLL\_M-50\_TuneZ2Star\_8TeV-madgraph-tarball in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.ARKO.6NV3},
+}
+
+@misc{cmsopendata-mc5,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset W1JetsToLNu\_TuneZ2Star\_8TeV-madgraph in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.REHM.JKUH},
+}
+
+@misc{cmsopendata-mc6,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset W2JetsToLNu\_TuneZ2Star\_8TeV-madgraph in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.DELK.2V7R},
+}
+
+@misc{cmsopendata-mc7,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset W3JetsToLNu\_TuneZ2Star\_8TeV-madgraph in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.HHCJ.TVXH},
+}
+
+@misc{cmsopendata-mc8,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset W2JetsToLNu\_TuneZ2Star\_8TeV-madgraph in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.DELK.2V7R},
+}
+
+@misc{cmsopendata-mc9,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{Simulated dataset DY1JetsToLL\_M-10To50\_TuneZ2Star\_8TeV-madgraph in AODSIM format for 2012 collision data. CERN Open Data Portal.}},
+  doi = {10.7483/OPENDATA.CMS.KAYE.XLAH},
+}
+
+@misc{cmsopendata-data1,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{SingleMu primary dataset in AOD format from Run of 2012 CERN Open Data Portal. (/SingleMu/Run2012B-22Jan2013-v1/AOD).}},
+  doi = {10.7483/OPENDATA.CMS.9A4E.7SIR},
+}
+
+@misc{cmsopendata-data2,
+  author = {{CMS collaboration}},
+  year  = 2017,
+  title = {{SingleMu primary dataset in AOD format from Run of 2012 CERN Open Data Portal. (/SingleMu/Run2012C-22Jan2013-v1/AOD).}},
+  doi = {10.7483/OPENDATA.CMS.IYVQ.1J0W},
+}
+
+@misc{cmsopendata-private-derived,
+  author = {{Joosep Pata}},
+  year = 2019,
+  title = {{Private derived dataset from CMS Open Data}},
+  url = {https://jpata.web.cern.ch/jpata/opendata_files}}
+}
+
+@software{aod2nanoaod,
+  author       = {Stefan Wunsch},
+  year         = 2019,
+  title        = {{cms-opendata-analyses/AOD2NanoAODOutreachTool}},
+  publisher    = {github},
+  url          = {https://github.com/cms-opendata-analyses/AOD2NanoAODOutreachTool}
+}
