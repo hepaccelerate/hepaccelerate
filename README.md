@@ -4,7 +4,7 @@
 
 # hepaccelerate
 
-- HEP data analysis with [jagged arrays](https://github.com/scikit-hep/awkward-array) using python + [Numba](http://numba.pydata.org/)
+- Fast kernels for HEP data analysis with [jagged arrays](https://github.com/scikit-hep/awkward-array) using python + [Numba](http://numba.pydata.org/)
 - Use **any ntuple**, as long as you can open it with [uproot](https://github.com/scikit-hep/uproot)
 - analyze a billion events with systematic to histograms in minutes on a single workstation
   - 1e9 events / (50 kHz x 24 threads) ~ 13 minutes
@@ -36,7 +36,7 @@ You may also clone this library as a part of your project, in which case you wil
 Optional libraries, which may be easier to install with conda:
  - `cupy` for GPU support
  - `cudatoolkit` for GPU support
- - `dask` for running the large-scale example
+ - `dask` for running the large-scale data analysis example
  - `xxhash` for LZ4 support
 
 ## Documentation
@@ -46,42 +46,110 @@ This code consists of two parts which can be used independently:
     - CUDA GPU: [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
-## Kernels
+### Kernels
 
-The jagged kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray`.
+The jagged kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray` and can be used on any `numpy` or `cupy` data arrays.
 
 We have implemented the following kernels for both the CPU and CUDA backends:
   - `ha.min_in_offsets(offsets, content, mask_rows, mask_content)`: retrieve the minimum value in a jagged array, given row and object masks
   - `ha.max_in_offsets(offsets, content, mask_rows, mask_content)`: as above, but find the maximum
-  - `ha.prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=None)`: compute the product in a jagged array
+  - `ha.prod_in_offsets(offsets, content, mask_rows, mask_content)`: compute the product in a jagged array
   - `ha.set_in_offsets(content, offsets, indices, target, mask_rows, mask_content)`: set the indexed value in a jagged array to a target
   - `ha.get_in_offsets(offsets, content, indices, mask_rows, mask_content)`:   retrieve the indexed values in a jagged array, e.g. get the leading jet pT
   - `ha.compute_new_offsets(offsets_old, mask_objects, offsets_new)`: given an   awkward offset array and a mask, create an offset array of the unmasked elements
   - `ha.searchsorted(bins, vals, side="left")`: 1-dimensional search in a sorted array
   - `ha.histogram_from_vector(data, weights, bins, mask=None)`: fill a 1-dimensional weighted histogram with arbitrary sorted bins, possibly using a mask
-  - `ha.histogram_from_vector_several(variables, weights, mask)`: fill several   histograms simultaneously based on `variables=[(data0, bins0), ...]`
-  - `ha.get_bin_contents(values, edges, contents, out)`: look up the bin contents of   a histogram based on a vector of values 
+  - `ha.histogram_from_vector_several(variables, weights, mask)`: fill several histograms simultaneously based on `variables=[(data0, bins0), ...]`, this is more efficient on GPUs than many small kernel calls
+  - `ha.get_bin_contents(values, edges, contents, out)`: look up the bin contents of a histogram based on a vector of values 
   - `ha.select_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
   - `ha.mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects defined by eta, phi and offsets, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
 
+### Dataset utilities
+
+  - `Dataset(name, filenames, datastructures, datapath="", treename="Events", is_mc=True)`: represents a dataset of many jagged arrays in memory
+    - `load_root()`: Load the dataset from ROOT files to memory
+    - `structs[name][ifile]`: JaggedStruct `name` in file `ifile`
+  - `JaggedStruct`: represents multiple jagged arrays with the same offsets
+    - `getattr(name)`: get the content array corresponding to name
+    - `offsets`: get the offsets array
+    - `move_to_device(array_lib)`: with `array_lib` being either `numpy` or `cupy`
+
+```python
+from hepaccelerate import dataset
+
+#Define which columns we want to access
+datastructures = {
+    "Muon": [
+        ("Muon_Px", "float32"),
+        ("Muon_Py", "float32"),
+    ],
+    "Jet": [
+        ("Jet_E", "float32"),
+        ("Jet_btag", "float32"),
+    ],
+    "EventVariables": [
+        ("NPrimaryVertices", "int32"),
+        ("triggerIsoMu24", "bool"),
+        ("EventWeight", "float32")
+    ]
+}
+
+#Define the dataset across the files
+dataset = Dataset("HZZ", ["data/HZZ.root"], datastructures, treename="events", datapath="")
+
+#Load the data to memory
+dataset.load_root()
+
+#Jets in the first file
+ifile = 0
+jets = dataset.structs["Jet"][ifile]
+
+#common offset array for jets
+jets_offsets = jets.offsets
+
+#data arrays
+jets_energy = jets.E
+jets_btag = jets.btag
+
+ev_weight = dataset.eventvars[ifile]["EventWeight"]
+```
+
 ## Usage
 
-This is a minimal example from [examples/simple_hzz.py](../blob/master/examples/simple_hzz.py), which can be run from this repository directly using
+A minimal example can be found in [examples/simple_hzz.py](../blob/master/examples/simple_hzz.py), which can be run from this repository directly using
 
 ```bash
+#on CPU
 PYTHONPATH=. python3 examples/simple_hzz.py
 
 #on GPU
 PYTHONPATH=. HEPACCELERATE_CUDA=1 python3 examples/simple_hzz.py
 ```
 
-## Example analysis
-For an example top quark pair analysis on ~200GB of CMS Open Data, please see [full_analysis.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/examples/full_analysis.py). The following methods are implementd using both the CPU and GPU backends:
+## Full example analysis
+
+For an example top quark pair analysis on ~144GB of CMS Open Data, please see [full_analysis.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/examples/full_analysis.py). This analysis uses [dask](https://dask.org/) to run many parallel processes either on the CPU or GPU. We stress that this is purely an example and using dask is by no means required to use the kernels.
+
+```
+#Download the large input dataset, need ~150GB of free space in ./
+./examples/download_example_data.sh ./
+
+#Set up your own dask cluster, or use the following to launch a cluster locally with 4 processes
+./examples/dask_cluster.sh 4
+
+PYTHONPATH=. HEPACCELERATE_CUDA=0 python3 examples/full_analysis.py --out data/out.pkl --datapath ./
+```
+
+The following methods are implemented using both the CPU and GPU backends:
 - event and object selection
 - on-the-fly variation of jets using mockup jet energy corrections
 - reconstruction of the jet triplet with invariant mass closest to the top quark mass
 - signal-to-background DNN evaluation
 - filling around 20 control histograms with systematic variations
+
+<p float="left">
+  <img src="https://github.com/hepaccelerate/hepaccelerate/blob/master/paper/plots/sumpt.png" alt="Top quark pair analysis" width="300"/>
+</p>
 
 ## Recommendations on data locality and remote data
 In order to make full use of modern CPUs or GPUs, you want to bring the data as close as possible to where the work is done, otherwise you will spend most of the time waiting for the data to arrive rather than actually performing the computations.

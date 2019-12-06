@@ -193,13 +193,14 @@ The benchmark analysis implements the following features in a single end-to-end 
     \item Multilayer, feedforward DNN evaluation using \texttt{tensorflow}
     \item saving all DNN inputs and outputs, along with systematic variations, to histograms ($\simeq 1000$ individual histograms)
 \end{itemize}
+
 We find that performing systematic corrections based on linear interpolations, re-evaluating the DNN classifier and filling thousands of histograms are the most computationally demanding steps of the analysis.
 Generally, this code represents a simplified but prototypical Standard Model analysis.
 We expect further work on analyses with LHC Open Data to result in more realistic codes.
 We note that ongoing analyses at CMS have already started to adapt to such array-based methods.
 
 We perform two benchmark scenarios of this analysis: one with a partial set of systematic uncertainties to emulate a simpler IO-limited analysis, and one with the full set of systematic uncertainties to test a compute-bound workload.
-The timing results from the benchmark are reported in table \ref{tab_benchmark} and on Figure \ref{fig:analysisbenchmark}. We demonstrate an example output from this analysis on Figure \ref{fig:analysisexample}.
+The timing results from the benchmark are reported in Table \ref{tab:benchmark} and on Figure \ref{fig:analysisbenchmark}. We demonstrate an example output from this analysis on Figure \ref{fig:analysisexample}.
 Generally, we observe that the simpler analysis can be carried out at rate of approximately 50 kHz / CPU-thread, with the GPU-accelerated version performing about 10x faster than a single CPU thread.
 
 ![Projected walltime to analyze 1 billion events for the top quark pair example. \label{fig:analysisbenchmark}](plots/analysis_benchmark.pdf){ width=6cm }
@@ -217,7 +218,7 @@ Ultimately, the choice of the computing platform will be driven by availability 
 \begin{table}[!t]
 \centering
 \caption{Processing speed and core-hours to process one billion events for the 270M-event / 144GB analysis benchmark with partial and full systematics, running either 24 single-threaded jobs, or 4 compute streams on 2 GPUs.}
-\label{tab_benchmark}
+\label{tab:benchmark}
 \begin{tabular}{c|cc}
 job type & partial systematics & full systematics \\
 \hline

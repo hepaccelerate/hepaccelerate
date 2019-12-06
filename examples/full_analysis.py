@@ -720,7 +720,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Caltech HiggsMuMu analysis')
     parser.add_argument('--datapath', action='store',
         help='Input file path that contains the CMS /store/... folder, e.g. /mnt/hadoop',
-        required=False, default="/storage/user/jpata")
+        required=False, default=".")
+    parser.add_argument('--dask-server', action='store',
+        help='IP of the dask server',
+        required=False, default="127.0.0.1:8786")
     parser.add_argument('--skim', action='store_true',
         help='Specify if skim should be done')
     parser.add_argument('--nthreads', action='store',
@@ -840,7 +843,7 @@ if __name__ == "__main__":
     from distributed import get_worker
 
     print("Trying to connect to dask cluster, please start it with examples/dask_cluster.sh or examples/dask_cluster_gpu.sh")
-    client = Client('127.0.0.1:8786')
+    client = Client(args.dask_server)
     plugin = InitializerPlugin(args)
     client.register_worker_plugin(plugin)
  
