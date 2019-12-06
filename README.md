@@ -46,6 +46,14 @@ This code consists of two parts which can be used independently:
     - CUDA GPU: [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
+## Environment variables
+
+The following environment variables can be used to tune the number of threads:
+```
+HEPACCELERATE_CUDA=0 #1 to enable CUDA
+NUMBA_NUM_THREADS=1 #number of parallel threads for numba CPU kernels
+```
+
 ### Kernels
 
 The jagged kernels work on the basis of the `content` and `offsets` arrays based on `awkward.JaggedArray` and can be used on any `numpy` or `cupy` data arrays.
@@ -64,16 +72,42 @@ We have implemented the following kernels for both the CPU and CUDA backends:
   - `ha.select_opposite_sign(muons, in_mask)`: select the first pair with opposite sign charge
   - `ha.mask_deltar_first(objs1, mask1, objs2, mask2, drcut)`: given two collections of objects defined by eta, phi and offsets, mask the objects in the first collection that satisfy `DeltaR(o1, o2) < drcut)`
 
+The kernels can be used as follows:
+```python
+import numpy
+import uproot
+
+from hepaccelerate import backend_cpu as ha
+
+tt = uproot.open("data/HZZ.root").get("events")
+
+mu_px = tt.array("Muon_Px")
+offsets = mu_px.offsets
+pxs = mu_px.content
+
+sel_ev = numpy.ones(len(tt), dtype=numpy.bool)
+sel_mu = numpy.ones(len(pxs), dtype=numpy.bool)
+
+event_max_pt = ha.max_in_offsets(
+    offsets,
+    pxs,
+    sel_ev,
+    sel_mu)
+```
+
 ### Dataset utilities
 
-  - `Dataset(name, filenames, datastructures, datapath="", treename="Events", is_mc=True)`: represents a dataset of many jagged arrays in memory
+  - `Dataset(name, filenames, datastructures, datapath="", treename="Events", is_mc=True)`: represents a dataset of many jagged arrays from multiple files with the same structure in memory
     - `load_root()`: Load the dataset from ROOT files to memory
     - `structs[name][ifile]`: JaggedStruct `name` in file `ifile`
-  - `JaggedStruct`: represents multiple jagged arrays with the same offsets
-    - `getattr(name)`: get the content array corresponding to name
+    - `compact(masks)`: Drop events that do not pass the masks, one per file
+  - `JaggedStruct`: Container for multiple singly-nested jagged arrays with the same offsets
+    - `getattr(name)`: get the content array corresponding to an attribute (e.g. `jet.pt`)
     - `offsets`: get the offsets array
     - `move_to_device(array_lib)`: with `array_lib` being either `numpy` or `cupy`
-
+  - `Histogram(contents, contents_w2, edges)`: a very simple container for one-dimensional histogram
+    - 
+The following example illustrates how the dataset structures are used:
 ```python
 from hepaccelerate import dataset
 
