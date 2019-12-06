@@ -46,7 +46,7 @@ This code consists of two parts which can be used independently:
     - CUDA GPU: [backend_cuda.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/hepaccelerate/backend_cuda.py)  
   - JaggedStruct, Dataset and Histogram classes to help with HEP dataset management
 
-## Environment variables
+### Environment variables
 
 The following environment variables can be used to tune the number of threads:
 ```
@@ -106,7 +106,7 @@ event_max_pt = ha.max_in_offsets(
     - `offsets`: get the offsets array
     - `move_to_device(array_lib)`: with `array_lib` being either `numpy` or `cupy`
   - `Histogram(contents, contents_w2, edges)`: a very simple container for one-dimensional histogram
-    - 
+
 The following example illustrates how the dataset structures are used:
 ```python
 from hepaccelerate import dataset

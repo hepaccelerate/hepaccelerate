@@ -53,7 +53,7 @@ The purpose of this report is to document the efforts of processing terabyte-sca
 We release the \texttt{hepaccelerate} library for further discussion [@hepaccelerate].
 
 In the following, we explore the approach based on columnar data analysis using vectorizable kernels in more detail.
-In section \ref{data-structure}, we describe the structure of the data and discuss how data sparsity is handled efficiently.
+In section \ref{sec:data-structure}, we describe the structure of the data and discuss how data sparsity is handled efficiently.
 We introduce physics-specific computational kernels in section \ref{computational-kernels} and describe the measured performance under a variety of conditions in section \ref{performance}.
 Finally, we conclude with a summary and outlook in section \ref{summary}.
 
