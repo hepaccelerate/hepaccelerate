@@ -742,7 +742,7 @@ def multiprocessing_initializer(args, gpu_id=None):
     this_worker = get_worker()
 
     import tensorflow as tf
-    config = tf.ConfigProto()
+    config = tf.compat.v1.ConfigProto()
     config.intra_op_parallelism_threads=args.nthreads
     config.inter_op_parallelism_threads=args.nthreads
     os.environ["NUMBA_NUM_THREADS"] = str(args.nthreads)
@@ -752,9 +752,6 @@ def multiprocessing_initializer(args, gpu_id=None):
     else:
         if not gpu_id is None:
             os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        from keras.backend.tensorflow_backend import set_session
-        import tensorflow as tf
-        config = tf.ConfigProto()
         config.gpu_options.allow_growth = False
         gpu_memory_fraction = 0.2
         config.gpu_options.per_process_gpu_memory_fraction = gpu_memory_fraction

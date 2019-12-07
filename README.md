@@ -105,7 +105,7 @@ event_max_pt = ha.max_in_offsets(
     - `getattr(name)`: get the content array corresponding to an attribute (e.g. `jet.pt`)
     - `offsets`: get the offsets array
     - `move_to_device(array_lib)`: with `array_lib` being either `numpy` or `cupy`
-  - `Histogram(contents, contents_w2, edges)`: a very simple container for one-dimensional histogram
+  - `Histogram(contents, contents_w2, edges)`: a very simple container for a one-dimensional histogram
 
 The following example illustrates how the dataset structures are used:
 ```python
@@ -165,6 +165,9 @@ PYTHONPATH=. HEPACCELERATE_CUDA=1 python3 examples/simple_hzz.py
 For an example top quark pair analysis on ~144GB of CMS Open Data, please see [full_analysis.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/examples/full_analysis.py). This analysis uses [dask](https://dask.org/) to run many parallel processes either on the CPU or GPU. We stress that this is purely an example and using dask is by no means required to use the kernels.
 
 ```
+#make sure tensorflow is installed
+pip install tensorflow
+
 #Download the large input dataset, need ~150GB of free space in ./
 ./examples/download_example_data.sh ./
 
