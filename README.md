@@ -30,7 +30,7 @@ The library can be installed using `pip` in python >3.6:
 pip install hepaccelerate
 ```
 
-You may also clone this library as a part of your project, in which case you will need:
+You may also clone this library as a part of your project, in which case you will need the following libraries:
  - `pip install uproot numba xxhash lz4`
 
 Optional libraries, which may be easier to install with conda:
@@ -88,11 +88,18 @@ pxs = mu_px.content
 sel_ev = numpy.ones(len(tt), dtype=numpy.bool)
 sel_mu = numpy.ones(len(pxs), dtype=numpy.bool)
 
-event_max_pt = ha.max_in_offsets(
+#This is the same functionality as awkward.array.max, but supports either CPU or GPU!
+#Note that events with no entries will be filled with zeros rather than skipped
+event_max_px = ha.max_in_offsets(
     offsets,
     pxs,
     sel_ev,
     sel_mu)
+
+event_max_px_awkward = mu_px.max()
+event_max_px_awkward[numpy.isinf(event_max_px_awkward)] = 0
+
+print(numpy.all(event_max_px_awkward == event_max_px))
 ```
 
 ### Dataset utilities
@@ -109,7 +116,7 @@ event_max_pt = ha.max_in_offsets(
 
 The following example illustrates how the dataset structures are used:
 ```python
-from hepaccelerate import dataset
+from hepaccelerate.utils import Dataset
 
 #Define which columns we want to access
 datastructures = {
@@ -140,12 +147,16 @@ jets = dataset.structs["Jet"][ifile]
 
 #common offset array for jets
 jets_offsets = jets.offsets
+print(jets_offsets)
 
 #data arrays
 jets_energy = jets.E
 jets_btag = jets.btag
+print(jets_energy)
+print(jets_btag)
 
 ev_weight = dataset.eventvars[ifile]["EventWeight"]
+print(ev_weight)
 ```
 
 ## Usage
@@ -153,7 +164,11 @@ ev_weight = dataset.eventvars[ifile]["EventWeight"]
 A minimal example can be found in [examples/simple_hzz.py](../blob/master/examples/simple_hzz.py), which can be run from this repository directly using
 
 ```bash
+#required just for the example
+pip install matplotlib
+
 #on CPU
+
 PYTHONPATH=. python3 examples/simple_hzz.py
 
 #on GPU
@@ -165,15 +180,13 @@ PYTHONPATH=. HEPACCELERATE_CUDA=1 python3 examples/simple_hzz.py
 For an example top quark pair analysis on ~144GB of CMS Open Data, please see [full_analysis.py](https://github.com/hepaccelerate/hepaccelerate/blob/master/examples/full_analysis.py). This analysis uses [dask](https://dask.org/) to run many parallel processes either on the CPU or GPU. We stress that this is purely an example and using dask is by no means required to use the kernels.
 
 ```
-#make sure tensorflow is installed
-pip install tensorflow
+#make sure the libraries required for the example are installed
+pip install tensorflow==1.15 keras dask distributed
 
 #Download the large input dataset, need ~150GB of free space in ./
 ./examples/download_example_data.sh ./
 
-#Set up your own dask cluster, or use the following to launch a cluster locally with 4 processes
-./examples/dask_cluster.sh 4
-
+#Starts a dask cluster and runs the analysis
 PYTHONPATH=. HEPACCELERATE_CUDA=0 python3 examples/full_analysis.py --out data/out.pkl --datapath ./
 ```
 

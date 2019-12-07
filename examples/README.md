@@ -1,6 +1,10 @@
-This folder contains example analyses, run with
+This folder contains example analyses that use the library. A few additional dependencies are required
 
+```bash
+pip install matplotlib tensorflow==1.15 keras dask distributed
 ```
-python3 examples/simple_hzz.py #(simple example)
-python3 examples/full_analysis.py #(requires a dask cluster and 144GB of data)
+
+```bash
+python3 examples/simple_hzz.py
+python3 examples/full_analysis.py
 ```

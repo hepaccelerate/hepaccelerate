@@ -38,7 +38,7 @@ In practice, mixed precision floating points are used to store data only up to e
 ![The flowchart of the accelerated workflow for an example analysis.
 In the decompression stage, done on a weekly basis as new data samples arrive, the necessary columns from the compressed ROOT files of a few TB are saved to a smaller efficiently decompressable cache to minimize overhead at successive analysis iterations.
 The size of this cache varies, but is generally around 20-50\% of the original compressed data. In the analysis stage, which is done on an hourly basis, the cache is loaded in batches of a few GB of contiguous 1-dimensional arrays corresponding to sparse event content, with kernels being dispatched on the data either in host or device memory.
-The final result is a significantly reduced statistical summary of the original data, typically in the form of hundreds of histograms. \label{fig:flowchart}](plots/flowchart.pdf){ width=8cm }
+The final result is a significantly reduced statistical summary of the original data, typically in the form of hundreds of histograms.](plots/flowchart.pdf){ width=8cm }
 
 A typical physics analysis at the LHC such as the precision measurement of a particle property or the search for a new physics process involves billions of recorded and simulated events.
 The final result typically requires tens to hundreds of iterations over this dataset while the analysis is ongoing over a few months to a year.
@@ -53,9 +53,6 @@ The purpose of this report is to document the efforts of processing terabyte-sca
 We release the \texttt{hepaccelerate} library for further discussion [@hepaccelerate].
 
 In the following, we explore the approach based on columnar data analysis using vectorizable kernels in more detail.
-In section \ref{sec:data-structure}, we describe the structure of the data and discuss how data sparsity is handled efficiently.
-We introduce physics-specific computational kernels in section \ref{computational-kernels} and describe the measured performance under a variety of conditions in section \ref{performance}.
-Finally, we conclude with a summary and outlook in section \ref{summary}.
 
 # Data structure
 We can represent HEP collider data in the form of two-dimensional matrices, where the rows correspond to events and columns correspond to features in the event such as the momentum components of all measured particles.
@@ -68,15 +65,15 @@ Therefore, the full structure of $N$ events, $M$ particles in total, can be repr
 This can easily be extended to event formats where the event contains particle collections of different types, e.g.
 jets, electrons and muons.
 By using the data and offset arrays as the basis for computation, efficient computational kernels can be implemented and evaluated on the data.
-We illustrate this sparse or jagged data structure on Fig. \ref{fig:jagged}.
+We illustrate this sparse or jagged data structure on the figure below.
+
+![A visual representation of the jagged data structure of the jet $p_T$, $\eta$ and $\phi$ content in 50 simulated events.
+ On the leftmost figure, we show the number of jets per event, one event per row, derived from the offset array.
+In the three rightmost columns, we show the jet content in events, visualizing the $p_T$, $\eta$ and $\phi$ of the first 20 jets for each event.](plots/jagged_matrices.pdf){ width=8cm }
 
 In practice, analysis-level HEP event data are stored in compressed files of raw columnar features in a so-called ``flat analysis ntuple'' form, implemented via the ROOT library.
 Out of hundreds of stored features, a typical analysis might use approximately 50 to 100, discarding the rest and only using them rarely for certain auxiliary calibration purposes.
 When the same features are accessed multiple times, the cost of decompressing the data can be significant, therefore, it is efficient to ensure the input files are compressed with an algorithm such as LZ4, that has a low decompression overhead [@Bockelman_2018].
-
-![A visual representation of the jagged data structure of the jet $p_T$, $\eta$ and $\phi$ content in 50 simulated events.
- On the leftmost figure, we show the number of jets per event, one event per row, derived from the offset array.
-In the three rightmost columns, we show the jet content in events, visualizing the $p_T$, $\eta$ and $\phi$ of the first 20 jets for each event. \label{fig:jagged}](plots/jagged_matrices.pdf){ width=8cm }
 
 # Computational kernels
 
@@ -89,7 +86,7 @@ Therefore, we propose to implement HEP analyses similarly using common kernels t
 We note that the columnar data analysis approach based on single-threaded kernels is already recognized in HEP [@coffea].
 Our contribution is to further extend the computational efficiency and scalability of the kernels to parallel hardware such as multi-threaded CPUs and propose a GPU implementation.
 
-In the following, we will demonstrate that by using the data and offset arrays as described in section \ref{data-structure}, common HEP operations can be formulated as kernels and dispatched to the computational hardware, thereby processing the event data in parallel.
+In the following, we will demonstrate that by using the data and offset arrays as described in the previous section, common HEP operations can be formulated as kernels and dispatched to the computational hardware, thereby processing the event data in parallel.
 The central result of this report is that only a small number of simple kernels, easily implemented in e.g.
 Python or C, are needed to implement a realistic HEP analysis.
 
@@ -166,13 +163,13 @@ The kernels have been implemented in Python and just-in-time compiled to either 
 We have chosen Python and Numba to implement the kernels in the spirit of quickly prototyping this idea, but this approach is not restricted to a particular programming environment.
 The total number of lines of code for both the CPU and GPU implementations of all kernels is approximately 550 for each, reflecting the relative simplicity of the code.
 We have benchmarked the performance of the kernels on preloaded data on a multicore GPU-equipped workstation\footnote{24 core Intel Xeon E5-2687W v4 @ 3.00GHz, 2x nVidia Geforce Titan X GPUs and networked storage on HDDs using CephFS connected over a 10Gbit/s LAN}.
-The results are shown on Fig. \ref{fig:kernel_benchmarks}.
+The results are shown on the figure below.
 We find that even complex kernels perform at speeds of tens of MHz (millions of events per second).
 We find a total speedup of approximately 20-30x over single-core performance on a GPU for the kernels.
 
 ![Benchmarks of the computational kernels.
 We compare the performance of the kernels on approximately 11 million preloaded events with respect to the number of CPU threads used. We find that using multiple CPU threads leads to a sublinear increase in performance, whereas the kernels on the GPU generally receive a  20-30x speedup over a single thread.
-In particular, we find that the kernel for computing $\Delta R$ masking between two collections runs at a speed of 7 MHz on a single-thread of the CPU and is sped up by about a factor x15 using the GPU.\label{fig:kernel_benchmarks}](plots/kernel_benchmarks.pdf){ width=8cm }
+In particular, we find that the kernel for computing $\Delta R$ masking between two collections runs at a speed of 7 MHz on a single-thread of the CPU and is sped up by about a factor x15 using the GPU.](plots/kernel_benchmarks.pdf){ width=8cm }
 
 # Analysis benchmark
 
@@ -200,25 +197,11 @@ We expect further work on analyses with LHC Open Data to result in more realisti
 We note that ongoing analyses at CMS have already started to adapt to such array-based methods.
 
 We perform two benchmark scenarios of this analysis: one with a partial set of systematic uncertainties to emulate a simpler IO-limited analysis, and one with the full set of systematic uncertainties to test a compute-bound workload.
-The timing results from the benchmark are reported in Table \ref{tab:benchmark} and on Figure \ref{fig:analysisbenchmark}. We demonstrate an example output from this analysis on Figure \ref{fig:analysisexample}.
-Generally, we observe that the simpler analysis can be carried out at rate of approximately 50 kHz / CPU-thread, with the GPU-accelerated version performing about 10x faster than a single CPU thread.
-
-![Projected walltime to analyze 1 billion events for the top quark pair example. \label{fig:analysisbenchmark}](plots/analysis_benchmark.pdf){ width=6cm }
-![One of the resulting plots for the top quark pair example analysis \label{fig:analysisexample}](plots/sumpt.pdf){ width=6cm }
-
-On the other hand, a complex compute-bound analysis where the main workload is repeated around 40x is about 15x faster on a single GPU than on 1 CPU thread.
-This modest advantage compared to the 20-100x improvement in raw kernel performance can be attributed to suboptimal kernel scheduling, as we have observed the GPU utilization peak around 50\% in typical benchmarking. This is partly mitigated by running multiple compute streams on the GPU, we find that running two parallel streams for this example analysis is practical.
-A single pass of the analysis involves hundreds to thousands of kernel calls, such that further optimizations in kernel scheduling and fusion are needed to keep the accelerator fully loaded.
-We find that it is beneficial to ensure that the kernels are called on sufficiently large datasets to reduce the overhead of kernel scheduling with respect to the time spent in the computation.
-
-Although the approximately 10-15x performance improvement on the GPU with respect to a single CPU thread is relatively modest, it is promising to see that most of the physics analysis methods can be implemented with relative ease on a GPU, such that with further optimizations, a small number multi-GPU machines might be a viable alternative to a large server farm in the future.
-We stress that we do not claim a GPU is necessarily faster than a large number of CPU threads, but rather demonstrate that it is possible to implement a portable end-to-end analysis on various compute platforms by using relatively standard tools.
-Ultimately, the choice of the computing platform will be driven by availability and pricing of resources.
+The timing results from the benchmark are reported in the table and figure below.
 
 \begin{table}[!t]
 \centering
 \caption{Processing speed and core-hours to process one billion events for the 270M-event / 144GB analysis benchmark with partial and full systematics, running either 24 single-threaded jobs, or 4 compute streams on 2 GPUs.}
-\label{tab:benchmark}
 \begin{tabular}{c|cc}
 job type & partial systematics & full systematics \\
 \hline
@@ -240,6 +223,19 @@ GPU stream & 1.8 & 11 \\
 \hline
 \end{tabular}
 \end{table}
+![Projected walltime to analyze 1 billion events for the top quark pair example.](plots/analysis_benchmark.pdf){ width=6cm }
+![One of the resulting plots for the top quark pair example analysis.](plots/sumpt.pdf){ width=6cm }
+
+Generally, we observe that the simpler analysis can be carried out at rate of approximately 50 kHz / CPU-thread, with the GPU-accelerated version performing about 10x faster than a single CPU thread.
+
+On the other hand, a complex compute-bound analysis where the main workload is repeated around 40x is about 15x faster on a single GPU than on 1 CPU thread.
+This modest advantage compared to the 20-100x improvement in raw kernel performance can be attributed to suboptimal kernel scheduling, as we have observed the GPU utilization peak around 50\% in typical benchmarking. This is partly mitigated by running multiple compute streams on the GPU, we find that running two parallel streams for this example analysis is practical.
+A single pass of the analysis involves hundreds to thousands of kernel calls, such that further optimizations in kernel scheduling and fusion are needed to keep the accelerator fully loaded.
+We find that it is beneficial to ensure that the kernels are called on sufficiently large datasets to reduce the overhead of kernel scheduling with respect to the time spent in the computation.
+
+Although the approximately 10-15x performance improvement on the GPU with respect to a single CPU thread is relatively modest, it is promising to see that most of the physics analysis methods can be implemented with relative ease on a GPU, such that with further optimizations, a small number multi-GPU machines might be a viable alternative to a large server farm in the future.
+We stress that we do not claim a GPU is necessarily faster than a large number of CPU threads, but rather demonstrate that it is possible to implement a portable end-to-end analysis on various compute platforms by using relatively standard tools.
+Ultimately, the choice of the computing platform will be driven by availability and pricing of resources.
 
 # Summary
 We demonstrate that it is possible to carry out prototypical end-to-end high-energy physics data analysis from a relatively simple code on a using multithreading to process millions of events per second on a multicore workstation.
