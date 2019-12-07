@@ -32,27 +32,28 @@ At the general-purpose experiments of the Large Hadron Collider such as CMS or A
 The data consist of columns of physics related variables or features for the recorded particles such as electrons, muons, jets and photons for each event in billions of rows.
 In addition to the columns of purely kinematic information of particle momentum, typically expressed in spherical coordinates of $p_T$, $\eta$, $\phi$ and $M$, each particle carries a number of features that describe the reconstruction details and other high-level properties of the reconstructed particles.
 For example, for muons, we might record the number of tracker layers where an associated hit was found, whether or not it reached the outer muon chambers and in simulation the index of the associated generator-level particle, thereby cross-linking two collections.
-A typical event might contain hundreds of measured or simulated particles, such that compressed event sizes for such reduced data formats are on the order of a few kilobytes per event.
-In practice, mixed precision floating points are used to store data only up to experimental precision, such that the number of features per event is on the order of a few hundred.
 
 ![The flowchart of the accelerated workflow for an example analysis.
 In the decompression stage, done on a weekly basis as new data samples arrive, the necessary columns from the compressed ROOT files of a few TB are saved to a smaller efficiently decompressable cache to minimize overhead at successive analysis iterations.
 The size of this cache varies, but is generally around 20-50\% of the original compressed data. In the analysis stage, which is done on an hourly basis, the cache is loaded in batches of a few GB of contiguous 1-dimensional arrays corresponding to sparse event content, with kernels being dispatched on the data either in host or device memory.
 The final result is a significantly reduced statistical summary of the original data, typically in the form of hundreds of histograms.](plots/flowchart.pdf){ width=8cm }
 
+The purpose of the \texttt{hepaccelerate} package is twofold:
+  - to demonstrate and simplify high-performance data analysis with HEP-specific jagged arrays in Python
+  - to enable the use of multithreaded CPUs and GPUs for processing HEP-specific data
+
 A typical physics analysis at the LHC such as the precision measurement of a particle property or the search for a new physics process involves billions of recorded and simulated events.
 The final result typically requires tens to hundreds of iterations over this dataset while the analysis is ongoing over a few months to a year.
-For each iteration of the analysis, hundreds of batch jobs of custom reduction software is run over these data.
-By reducing the complexity and increasing the speed of these workflows, HEP experiments could deliver results from large datasets with faster turn-around times and correspondingly more time spent in development of new analysis methods as well as validation and verification, accelerating discovery and making the results more robust.
+For each iteration of the analysis, hundreds of batch jobs of custom reduction software typically written in C++ for maximum performance is run over these data.
+These workflows can be complex to maintain, run and debug, with Python offering a simpler way to manage the data analysis workflow as a single program.
 
 Recently, heterogeneous and highly parallel computing architectures beyond consumer x86 processors such as GPUs, TPUs and FPGAs have become increasingly prevalent in scientific computing.
 We investigate the use of array-based computational kernels that are well-suited for parallel architectures for carrying out the final data analysis in HEP.
+
 We have implemented a prototypical top quark pair analysis involving the selection and calibration of jets in an event, along with the evaluation of a machine learning discriminator.
 Although we use a specific and relatively simple analysis as an example, the approach based on array computing with accelerated kernels is generic and can be used for other collider analyses.
-The purpose of this report is to document the efforts of processing terabyte-scale data in HEP fast and efficiently using Python.
-We release the \texttt{hepaccelerate} library for further discussion [@hepaccelerate].
-
-In the following, we explore the approach based on columnar data analysis using vectorizable kernels in more detail.
+We hope that further work in this direction can lead to end-to-end high-performance data analysis and visualization receiving wider adoption in HEP.
+In the following paper, we document the approach based on columnar data analysis using vectorizable kernels in more detail.
 
 # Data structure
 We can represent HEP collider data in the form of two-dimensional matrices, where the rows correspond to events and columns correspond to features in the event such as the momentum components of all measured particles.
