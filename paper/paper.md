@@ -202,7 +202,7 @@ We note that ongoing analyses at CMS have already started to adapt to such array
 We perform two benchmark scenarios of this analysis: one with a partial set of systematic uncertainties to emulate a simpler IO-limited analysis, and one with the full set of systematic uncertainties to test a compute-bound workload.
 The timing results from the benchmark are reported in the table and figure below.
 
-\begin{table}
+\begin{table}[t]
 \centering
 \caption{Processing speed and core-hours to process one billion events for the 270M-event / 144GB analysis benchmark with partial and full systematics, running either 24 single-threaded jobs, or 4 compute streams on 2 GPUs.}
 \begin{tabular}{c|cc}
