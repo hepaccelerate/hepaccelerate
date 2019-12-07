@@ -170,7 +170,7 @@ The results are shown on the figure below.
 
 ![Benchmarks of the computational kernels.
 We compare the performance of the kernels on approximately 11 million preloaded events with respect to the number of CPU threads used. We find that using multiple CPU threads leads to a sublinear increase in performance, whereas the kernels on the GPU generally receive a  20-30x speedup over a single thread.
-In particular, we find that the kernel for computing $\Delta R$ masking between two collections runs at a speed of 7 MHz on a single-thread of the CPU and is sped up by about a factor x15 using the GPU. The kernel \verb|simple_cut|, which applies a greater-than-threshold array operation receives no speedup on multiple cores, due to \verb|numpy| not using multithreading generic array operations.](plots/kernel_benchmarks.pdf){ width=8cm }
+In particular, we find that the kernel for computing $\Delta R$ masking between two collections runs at a speed of 7 MHz on a single-thread of the CPU and is sped up by about a factor x15 using the GPU. ](plots/kernel_benchmarks.pdf){ width=8cm }
 
 We find that even complex kernels perform at speeds of tens of MHz (millions of events per second) on a single CPU thread, whereas a total speedup of approximately 20-30x over single-core performance is common on a GPU for the kernels.
 
@@ -202,7 +202,7 @@ We note that ongoing analyses at CMS have already started to adapt to such array
 We perform two benchmark scenarios of this analysis: one with a partial set of systematic uncertainties to emulate a simpler IO-limited analysis, and one with the full set of systematic uncertainties to test a compute-bound workload.
 The timing results from the benchmark are reported in the table and figure below.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \caption{Processing speed and core-hours to process one billion events for the 270M-event / 144GB analysis benchmark with partial and full systematics, running either 24 single-threaded jobs, or 4 compute streams on 2 GPUs.}
 \begin{tabular}{c|cc}
