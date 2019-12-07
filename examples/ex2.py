@@ -29,9 +29,13 @@ jets = dataset.structs["Jet"][ifile]
 
 #common offset array for jets
 jets_offsets = jets.offsets
+print(jets_offsets)
 
 #data arrays
 jets_energy = jets.E
 jets_btag = jets.btag
+print(jets_energy)
+print(jets_btag)
 
 ev_weight = dataset.eventvars[ifile]["EventWeight"]
+print(ev_weight)

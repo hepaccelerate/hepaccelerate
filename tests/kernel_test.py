@@ -24,7 +24,7 @@ def download_file(filename, url):
         # Write response data to file
         iblock = 0
         for block in response.iter_content(4096):
-            if iblock % 1000 == 0:
+            if iblock % 10000 == 0:
                 sys.stdout.write(".");sys.stdout.flush()
             iblock += 1
             fout.write(block)

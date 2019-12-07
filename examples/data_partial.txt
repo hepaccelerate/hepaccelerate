@@ -1,0 +1,12 @@
+opendata_files/DY1JetsToLL-merged/1.root
+opendata_files/DY2JetsToLL-merged/1.root
+opendata_files/DYJetsToLL-merged/1.root
+opendata_files/GluGluToHToMM-merged/1.root
+opendata_files/SingleMu-merged/SingleMu_1.root
+opendata_files/TTJets_FullLeptMGDecays-merged/1.root
+opendata_files/TTJets_Hadronic-merged/1.root
+opendata_files/TTJets_SemiLeptMGDecays-merged/1.root
+opendata_files/VBF_HToBB-merged/1.root
+opendata_files/W1JetsToLNu-merged/1.root
+opendata_files/W2JetsToLNu-merged/1.root
+opendata_files/W3JetsToLNu-merged/1.root

@@ -736,6 +736,11 @@ def parse_args():
         help='Number of JEC scenarios', default=1, type=int)
  
     args = parser.parse_args()
+    
+    #Will start a local cluster
+    if args.dask_server == "":
+        args.dask_server = None
+
     return args
 
 def multiprocessing_initializer(args, gpu_id=None):
