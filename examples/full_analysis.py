@@ -141,7 +141,7 @@ def get_selected_muons(muons, pt_cut_leading, pt_cut_subleading, aeta_cut, iso_c
     NUMPY_LIB = this_worker.NUMPY_LIB
     ha = this_worker.ha
 
-    passes_iso = muons.pfRelIso03_all > iso_cut
+    passes_iso = muons.pfRelIso03_all < iso_cut
     passes_id = muons.tightId == True
     passes_subleading_pt = muons.pt > pt_cut_subleading
     passes_leading_pt = muons.pt > pt_cut_leading
@@ -326,21 +326,21 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     hists = {}
     histo_bins = {
         "nmu": np.array([0,1,2,3], dtype=np.float32),
-        "njet": np.array([0,1,2,3,4,5,6,7], dtype=np.float32),
-        "mu_pt": np.linspace(0, 300, 20),
-        "mu_eta": np.linspace(-5, 5, 20),
-        "mu_phi": np.linspace(-5, 5, 20),
-        "mu_iso": np.linspace(0, 1, 20),
+        "njet": np.array([3,4,5,6,7], dtype=np.float32),
+        "mu_pt": np.linspace(0, 300, 100),
+        "mu_eta": np.linspace(-5, 5, 100),
+        "mu_phi": np.linspace(-5, 5, 100),
+        "mu_iso": np.linspace(0, 1, 100),
         "mu_charge": np.array([-1, 0, 1], dtype=np.float32),
-        "met_pt": np.linspace(0,200,20),
-        "jet_pt": np.linspace(0,400,20),
-        "jet_eta": np.linspace(-5,5,20),
-        "jet_phi": np.linspace(-5,5,20),
-        "jet_btag": np.linspace(0,1,20),
-        "dnnpred_m": np.linspace(0,1,20),
-        "dnnpred_s": np.linspace(0,0.2,20),
-        "inv_mass": np.linspace(150,200, 20),
-        "sumpt": np.linspace(0,1000,20),
+        "met_pt": np.linspace(0,200,100),
+        "jet_pt": np.linspace(0,400,100),
+        "jet_eta": np.linspace(-5,5,100),
+        "jet_phi": np.linspace(-5,5,100),
+        "jet_btag": np.linspace(0,1,100),
+        "dnnpred_m": np.linspace(0,1,100),
+        "dnnpred_s": np.linspace(0,0.1,100),
+        "inv_mass": np.linspace(150,200, 100),
+        "sumpt": np.linspace(0,1000,100),
     }
 
     t0 = time.time()
@@ -359,10 +359,10 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
     evs_all = NUMPY_LIB.ones(dataset.numevents(), dtype=NUMPY_LIB.bool)
 
     print("Lepton selection")
-    sel_mu, sel_ev_mu = get_selected_muons(mu, 40, 20, 2.4, 0.1)
+    sel_mu, sel_ev_mu = get_selected_muons(mu, 30, 20, 2.4, 0.1)
     sel_ev_mu = sel_ev_mu & (evvars['HLT_IsoMu24'] == True)
     mu.masks["selected"] = sel_mu
-    sel_el, sel_ev_el = get_selected_electrons(el, 40, 20, 2.4, 0.1)
+    sel_el, sel_ev_el = get_selected_electrons(el, 30, 20, 2.4, 0.1)
     el.masks["selected"] = sel_el
     
     nmu = ha.sum_in_offsets(
@@ -431,7 +431,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
         print("jec", ijec, sdir, jets.pt.mean())
 
         #get selected jets
-        sel_jet, sel_bjet = select_jets(jets, mu, el, sel_mu, sel_el, 40, 2.0, 0.3, 0.4)
+        sel_jet, sel_bjet = select_jets(jets, mu, el, sel_mu, sel_el, 30, 2.0, 0.3, 0.4)
         
         #compute the number of jets per event 
         njet = ha.sum_in_offsets(
@@ -457,9 +457,9 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
         else:
             this_worker.kernels.max_val_comb(jets.btag, jets.offsets, best_comb_3j, best_btag)
 
-        #get the events with at least three jets
+        #get the events with at least three jets and at least one b-tag
         sel_ev_jet = (njet >= 3)
-        sel_ev_bjet = (nbjet >= 1)
+        sel_ev_bjet = (nbjet >= 2)
         
         selected_events = (sel_ev_mu | sel_ev_el) & sel_ev_jet & sel_ev_bjet
         print("Selected {0} events".format(selected_events.sum()))
@@ -504,7 +504,7 @@ def run_analysis(dataset, out, dnnmodel, use_cuda, ismc):
             pred_s = NUMPY_LIB.std(pred, axis=1)
 
         fill_histograms_several(
-            hists, systname, "hist__nmu1_njetge3_nbjetge1__",
+            hists, systname, "hist__nmu1_njetge3_nbjetge2__",
             [
                 (pred_m, "pred_m", histo_bins["dnnpred_m"]),
                 (pred_s, "pred_s", histo_bins["dnnpred_s"]),
@@ -783,8 +783,8 @@ def multiprocessing_initializer(args, gpu_id=None):
     this_worker.jecs_bins[:] = NUMPY_LIB.linspace(0, 200, this_worker.jecs_bins.shape[0])[:]
 
     for i in range(args.njec):
-        this_worker.jecs_up[:, i] = 0.3*(float(i+1)/float(args.njec)) 
-        this_worker.jecs_down[:, i] = -0.3*(float(i+1)/float(args.njec)) 
+        this_worker.jecs_up[:, i] = 0.02*float(i+1)
+        this_worker.jecs_down[:, i] = -0.02*float(i+1)
 
 def load_and_analyze(args_tuple):
     fn, args, dataset, entrystart, entrystop, ismc, ichunk = args_tuple
