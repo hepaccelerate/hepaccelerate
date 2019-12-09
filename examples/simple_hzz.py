@@ -98,4 +98,4 @@ if __name__ == "__main__":
     hist = results["hist_leading_muon_pt"]
     fig = plt.figure(figsize=(5,5))
     plt.errorbar(hist.edges[:-1], hist.contents, np.sqrt(hist.contents_w2))
-    plt.savefig("hist.pdf", bbox_inches="tight")
+    plt.savefig("hist.png", bbox_inches="tight")

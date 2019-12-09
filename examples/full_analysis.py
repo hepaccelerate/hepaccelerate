@@ -720,7 +720,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Caltech HiggsMuMu analysis')
     parser.add_argument('--datapath', action='store',
         help='Input file path that contains the CMS /store/... folder, e.g. /mnt/hadoop',
-        required=False, default="/storage/user/jpata")
+        required=False, default=".")
+    parser.add_argument('--dask-server', action='store',
+        help='IP of the dask server',
+        required=False, default="127.0.0.1:8786")
     parser.add_argument('--skim', action='store_true',
         help='Specify if skim should be done')
     parser.add_argument('--nthreads', action='store',
@@ -733,13 +736,18 @@ def parse_args():
         help='Number of JEC scenarios', default=1, type=int)
  
     args = parser.parse_args()
+    
+    #Will start a local cluster
+    if args.dask_server == "":
+        args.dask_server = None
+
     return args
 
 def multiprocessing_initializer(args, gpu_id=None):
     this_worker = get_worker()
 
     import tensorflow as tf
-    config = tf.ConfigProto()
+    config = tf.compat.v1.ConfigProto()
     config.intra_op_parallelism_threads=args.nthreads
     config.inter_op_parallelism_threads=args.nthreads
     os.environ["NUMBA_NUM_THREADS"] = str(args.nthreads)
@@ -749,9 +757,6 @@ def multiprocessing_initializer(args, gpu_id=None):
     else:
         if not gpu_id is None:
             os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        from keras.backend.tensorflow_backend import set_session
-        import tensorflow as tf
-        config = tf.ConfigProto()
         config.gpu_options.allow_growth = False
         gpu_memory_fraction = 0.2
         config.gpu_options.per_process_gpu_memory_fraction = gpu_memory_fraction
@@ -832,15 +837,15 @@ if __name__ == "__main__":
     np.random.seed(0)
     args = parse_args()
     args.use_cuda = use_cuda
-    #for i in range(1):
-    #    download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
+    for i in range(2):
+        download_if_not_exists("data/model_kf{0}.h5".format(i), "https://jpata.web.cern.ch/jpata/hepaccelerate/model_kf{0}.h5".format(i))
 
     import dask
     from dask.distributed import Client, LocalCluster
     from distributed import get_worker
 
     print("Trying to connect to dask cluster, please start it with examples/dask_cluster.sh or examples/dask_cluster_gpu.sh")
-    client = Client('127.0.0.1:8786')
+    client = Client(args.dask_server)
     plugin = InitializerPlugin(args)
     client.register_worker_plugin(plugin)
  
