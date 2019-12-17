@@ -307,7 +307,7 @@ class BaseDataset(object):
         self.data_host = []
         self.treename = treename
 
-    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None, attempts=3):
+    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None, nattempts=3):
         t0 = time.time()
         nevents = 0
 
@@ -316,6 +316,7 @@ class BaseDataset(object):
 
         done = False 
         failed = False
+        nfailed = 0
         while not done:
             try:
                 for ifn, fn in enumerate(self.filenames):
@@ -339,9 +340,9 @@ class BaseDataset(object):
                     self.data_host += [arrs]
                     done = True
             except requests.exceptions.ConnectionError as e:
-                print("preload: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, attempts), file=sys.stderr)
+                print("preload: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, nattempts), file=sys.stderr)
                 nfailed += 1
-                if nfailed >= attempts:
+                if nfailed >= nattempts:
                     done = True
                     failed = True
         if failed:
