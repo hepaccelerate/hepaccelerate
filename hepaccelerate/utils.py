@@ -14,6 +14,7 @@ from numba.typed import Dict
 
 import awkward
 import copy
+import requests
 
 """
 Choose either the CPU(numpy) or GPU/CUDA(cupy) backend.
@@ -306,37 +307,39 @@ class BaseDataset(object):
         self.data_host = []
         self.treename = treename
 
-    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
+    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None, attempts=3):
         t0 = time.time()
         nevents = 0
 
         #Print a warning if a slow compression method is used
         compression_warning = True
 
-        for ifn, fn in enumerate(self.filenames):
-            #Empty ROOT file
-            #if os.stat(fn).st_size == 0:
-            #    print("File {0} is empty, skipping".format(fn), file=sys.stderr)
-            #    self.data_host += [{bytes(k, encoding="ascii"): awkward.JaggedArray([], [], []) for k in self.arrays_to_load}]
-            #    continue
-            fi = uproot.open(fn)
+        nfailed = 0
+        while nfailed <= attempts:
+            try:
+                for ifn, fn in enumerate(self.filenames):
+                    fi = uproot.open(fn)
 
-            if compression_warning and not "lz4" in str(fi._context.compression):  
-                print("Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
-                    fn,
-                    fi._context.compression
-                ))
-                compression_warning = False
+                    if compression_warning and not "lz4" in str(fi._context.compression):  
+                        print("Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
+                            fn,
+                            fi._context.compression
+                        ))
+                        compression_warning = False
  
-            tt = fi.get(self.treename)
-            nevents += len(tt)
-            if nthreads > 1:
-                from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=nthreads) as executor:
-                    arrs = tt.arrays(self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
-            else:
-                arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
-            self.data_host += [arrs]
+                    tt = fi.get(self.treename)
+                    nevents += len(tt)
+                    if nthreads > 1:
+                        from concurrent.futures import ThreadPoolExecutor
+                        with ThreadPoolExecutor(max_workers=nthreads) as executor:
+                            arrs = tt.arrays(self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
+                    else:
+                        arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
+                    self.data_host += [arrs]
+            except requests.exceptions.ConnectionError as e:
+                print("preload: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, attempts), file=sys.stderr)
+                nfailed += 1
+
         t1 = time.time()
         dt = t1 - t0
         if verbose:
