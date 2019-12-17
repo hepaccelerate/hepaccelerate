@@ -314,8 +314,9 @@ class BaseDataset(object):
         #Print a warning if a slow compression method is used
         compression_warning = True
 
-        nfailed = 0
-        while nfailed <= attempts:
+        done = False 
+        failed = False
+        while not done:
             try:
                 for ifn, fn in enumerate(self.filenames):
                     fi = uproot.open(fn)
@@ -336,9 +337,15 @@ class BaseDataset(object):
                     else:
                         arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
                     self.data_host += [arrs]
+                    done = True
             except requests.exceptions.ConnectionError as e:
                 print("preload: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, attempts), file=sys.stderr)
                 nfailed += 1
+                if nfailed >= attempts:
+                    done = True
+                    failed = True
+        if failed:
+            raise Exception("Could not open ROOT files: {0}".format(self.filenames))
 
         t1 = time.time()
         dt = t1 - t0
