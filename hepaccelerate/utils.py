@@ -315,10 +315,10 @@ class BaseDataset(object):
 
         for ifn, fn in enumerate(self.filenames):
             #Empty ROOT file
-            if os.stat(fn).st_size == 0:
-                print("File {0} is empty, skipping".format(fn), file=sys.stderr)
-                self.data_host += [{bytes(k, encoding="ascii"): awkward.JaggedArray([], [], []) for k in self.arrays_to_load}]
-                continue
+            #if os.stat(fn).st_size == 0:
+            #    print("File {0} is empty, skipping".format(fn), file=sys.stderr)
+            #    self.data_host += [{bytes(k, encoding="ascii"): awkward.JaggedArray([], [], []) for k in self.arrays_to_load}]
+            #    continue
             fi = uproot.open(fn)
 
             if compression_warning and not "lz4" in str(fi._context.compression):  
