@@ -16,6 +16,25 @@ import awkward
 import copy
 import requests
 
+def load_arrays_attempts(tt, arrays_to_load, executor=None, entrystart=None, entrystop=None, num_attempts=3):
+    done = False 
+    failed = False
+    nfailed = 0
+
+    while not done:
+        try:
+            arrs = tt.arrays(arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
+            return arrs
+        except requests.exceptions.ConnectionError as e:
+            print("uproot_open_attempts: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, num_attempts), file=sys.stderr)
+            nfailed += 1
+            if nfailed >= num_attempts:
+                done = True
+                failed = True
+
+    if failed:
+       raise Exception("Could not open ROOT files: {0}".format(self.filenames))
+
 def uproot_open_attempts(fn, num_attempts=3):
     done = False 
     failed = False
@@ -346,9 +365,9 @@ class BaseDataset(object):
             if nthreads > 1:
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=nthreads) as executor:
-                    arrs = tt.arrays(self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
+                    arrs = load_arrays_attempts(tt, self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
             else:
-                arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
+                arrs = load_arrays_attempts(tt, self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
             self.data_host += [arrs]
 
         t1 = time.time()
