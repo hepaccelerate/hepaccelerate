@@ -16,6 +16,24 @@ import awkward
 import copy
 import requests
 
+def uproot_open_attempts(fn, num_attempts=3):
+    done = False 
+    failed = False
+    nfailed = 0
+
+    while not done:
+        try:
+            ret = uproot.open(fn)
+            return ret
+        except requests.exceptions.ConnectionError as e:
+            print("uproot_open_attempts: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, num_attempts), file=sys.stderr)
+            nfailed += 1
+            if nfailed >= num_attempts:
+                done = True
+                failed = True
+
+    if failed:
+       raise Exception("Could not open ROOT files: {0}".format(self.filenames))
 """
 Choose either the CPU(numpy) or GPU/CUDA(cupy) backend.
 
@@ -307,46 +325,31 @@ class BaseDataset(object):
         self.data_host = []
         self.treename = treename
 
-    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None, nattempts=3):
+    def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
         t0 = time.time()
         nevents = 0
 
         #Print a warning if a slow compression method is used
         compression_warning = True
 
-        done = False 
-        failed = False
-        nfailed = 0
-        while not done:
-            try:
-                for ifn, fn in enumerate(self.filenames):
-                    fi = uproot.open(fn)
-
-                    if compression_warning and not "lz4" in str(fi._context.compression):  
-                        print("Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
-                            fn,
-                            fi._context.compression
-                        ))
-                        compression_warning = False
+        for ifn, fn in enumerate(self.filenames):
+            fi = uproot_open_attempts(fn)
+            if compression_warning and not "lz4" in str(fi._context.compression):  
+                print("Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
+                    fn,
+                    fi._context.compression
+                ))
+                compression_warning = False
  
-                    tt = fi.get(self.treename)
-                    nevents += len(tt)
-                    if nthreads > 1:
-                        from concurrent.futures import ThreadPoolExecutor
-                        with ThreadPoolExecutor(max_workers=nthreads) as executor:
-                            arrs = tt.arrays(self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
-                    else:
-                        arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
-                    self.data_host += [arrs]
-                    done = True
-            except requests.exceptions.ConnectionError as e:
-                print("preload: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, nattempts), file=sys.stderr)
-                nfailed += 1
-                if nfailed >= nattempts:
-                    done = True
-                    failed = True
-        if failed:
-            raise Exception("Could not open ROOT files: {0}".format(self.filenames))
+            tt = fi.get(self.treename)
+            nevents += len(tt)
+            if nthreads > 1:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=nthreads) as executor:
+                    arrs = tt.arrays(self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
+            else:
+                arrs = tt.arrays(self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
+            self.data_host += [arrs]
 
         t1 = time.time()
         dt = t1 - t0
