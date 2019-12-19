@@ -26,7 +26,7 @@ def load_arrays_attempts(tt, arrays_to_load, executor=None, entrystart=None, ent
             arrs = tt.arrays(arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
             return arrs
         except requests.exceptions.ConnectionError as e:
-            print("uproot_open_attempts: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, num_attempts), file=sys.stderr)
+            print("load_arrays_attempt: Error loading data over HTTP, attempt {0}/{1}".format(nfailed, num_attempts), file=sys.stderr)
             nfailed += 1
             if nfailed >= num_attempts:
                 done = True
