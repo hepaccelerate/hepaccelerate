@@ -9,6 +9,7 @@ import numba
 import uproot
 
 import hepaccelerate
+import hepaccelerate.kernels as kernels
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 
 USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
@@ -161,7 +162,8 @@ class TestKernels(unittest.TestCase):
         muons = dataset.structs["Muon"][0]
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        z = self.ha.sum_in_offsets(
+        z = kernels.sum_in_offsets(
+            self.ha,
             muons.offsets,
             muons.pt,
             sel_ev,
@@ -173,7 +175,8 @@ class TestKernels(unittest.TestCase):
         muons = dataset.structs["Muon"][0]
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        z = self.ha.max_in_offsets(
+        z = kernels.max_in_offsets(
+            self.ha,
             muons.offsets,
             muons.pt,
             sel_ev,
@@ -187,7 +190,8 @@ class TestKernels(unittest.TestCase):
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         inds = self.NUMPY_LIB.zeros(muons.numevents(), dtype=self.NUMPY_LIB.int8)
         inds[:] = 0
-        z = self.ha.get_in_offsets(
+        z = kernels.get_in_offsets(
+            self.ha,
             muons.offsets,
             muons.pt,
             inds,
@@ -208,7 +212,8 @@ class TestKernels(unittest.TestCase):
         inds[:] = 0
         target = self.NUMPY_LIB.ones(muons.numevents(), dtype=muons.pt.dtype)
 
-        self.ha.set_in_offsets(
+        kernels.set_in_offsets(
+            self.ha,
             muons.offsets,
             arr,
             inds,
@@ -226,7 +231,8 @@ class TestKernels(unittest.TestCase):
         ))
 
         print("checking get_in_offsets")
-        z = self.ha.get_in_offsets(
+        z = kernels.get_in_offsets(
+            self.ha,
             muons.offsets,
             arr,
             inds,
@@ -251,12 +257,12 @@ class TestKernels(unittest.TestCase):
         return muons.numevents()
     
     def test_kernel_broadcast(self):
-        print("kernel_mask_deltar_first")
+        print("kernel_broadcast")
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         met_pt = dataset.eventvars[0]["MET_pt"]
         met_pt_permuon = self.NUMPY_LIB.zeros(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
-        self.ha.broadcast(muons.offsets, met_pt, met_pt_permuon)
+        kernels.broadcast(self.ha, muons.offsets, met_pt, met_pt_permuon)
         self.assertTrue(verify_broadcast(
             self.NUMPY_LIB.asnumpy(muons.offsets),
             self.NUMPY_LIB.asnumpy(met_pt),
@@ -273,7 +279,8 @@ class TestKernels(unittest.TestCase):
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         sel_jet = (jet.pt > 10)
-        muons_matched_to_jet = self.ha.mask_deltar_first(
+        muons_matched_to_jet = kernels.mask_deltar_first(
+            self.ha,
             {"offsets": muons.offsets, "eta": muons.eta, "phi": muons.phi},
             sel_mu,
             {"offsets": jet.offsets, "eta": jet.eta, "phi": jet.phi},
@@ -289,7 +296,8 @@ class TestKernels(unittest.TestCase):
         muons = dataset.structs["Muon"][0]
         sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
         sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        muons_passing_os = self.ha.select_opposite_sign(
+        muons_passing_os = kernels.select_opposite_sign(
+            self.ha,
             muons.offsets, muons.charge, sel_mu)
         return muons.numevents()
     
@@ -298,7 +306,7 @@ class TestKernels(unittest.TestCase):
         dataset = self.dataset
         muons = dataset.structs["Muon"][0]
         weights = 2*self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
-        ret = self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32))
+        ret = kernels.histogram_from_vector(self.ha, muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32))
         self.assertEqual(ret[0][20], 112024.0)
         self.assertEqual(ret[1][20], 2*112024.0)
         self.assertEqual(ret[0][0], 0)
@@ -315,7 +323,7 @@ class TestKernels(unittest.TestCase):
         weights = 2*self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.float32)
         mask = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
         mask[:100] = False
-        ret = self.ha.histogram_from_vector(muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32), mask=mask)
+        ret = kernels.histogram_from_vector(self.ha, muons.pt, weights, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32), mask=mask)
         self.assertEqual(ret[0][20], 112014.0)
         self.assertEqual(ret[1][20], 2*112014.0)
         self.assertEqual(ret[0][0], 0)
@@ -339,24 +347,24 @@ class TestKernels(unittest.TestCase):
             (muons.mass, self.NUMPY_LIB.linspace(0,200,100, dtype=self.NUMPY_LIB.float32)),
             (muons.charge, self.NUMPY_LIB.array([-1, 0, 1, 2], dtype=self.NUMPY_LIB.float32)),
         ]
-        ret = self.ha.histogram_from_vector_several(variables, weights, mask)
-       
-        #weights, weights2, bins 
-        self.assertEqual(len(ret), 3)
+        ret = kernels.histogram_from_vector_several(self.ha, variables, weights, mask)
        
         #number of individual histograms
-        self.assertEqual(len(ret[0]), len(variables))
+        self.assertEqual(len(ret), len(variables))
+       
+        #weights, weights2, bins 
+        self.assertEqual(len(ret[0]), 3)
         
-        #bin contents
+        #bin edges
         for ivar in range(len(variables)):
-            self.assertEqual(len(ret[0][ivar]), len(variables[ivar][1]) - 1)
+            self.assertEqual(len(ret[ivar][0]), len(variables[ivar][1]) - 1)
        
         #bin contents
         for ivar in range(len(variables)):
-            ret2 = self.ha.histogram_from_vector(variables[ivar][0], weights, variables[ivar][1], mask=mask)
-            for ibin in range(len(ret[0][ivar])):
-                self.assertEqual(ret[0][ivar][ibin], ret2[0][ibin])
-                self.assertEqual(ret[1][ivar][ibin], ret2[1][ibin])
+            ret2 = kernels.histogram_from_vector(self.ha, variables[ivar][0], weights, variables[ivar][1], mask=mask)
+            for ibin in range(len(ret[ivar][0])):
+                self.assertEqual(ret[ivar][0][ibin], ret2[0][ibin])
+                self.assertEqual(ret[ivar][1][ibin], ret2[1][ibin])
 
         return muons.numevents()
 
@@ -364,8 +372,8 @@ class TestKernels(unittest.TestCase):
         print("coordinate_transformation")
         #Don't test the scalar ops on GPU
         if not USE_CUDA:
-            px, py, pz, e = self.ha.spherical_to_cartesian(100.0, 0.2, 0.4, 100.0)
-            pt, eta, phi, mass = self.ha.cartesian_to_spherical(px, py, pz, e)
+            px, py, pz, e = kernels.spherical_to_cartesian(self.ha, 100.0, 0.2, 0.4, 100.0)
+            pt, eta, phi, mass = kernels.cartesian_to_spherical(self.ha, px, py, pz, e)
             self.assertAlmostEqual(pt, 100.0, 2)
             self.assertAlmostEqual(eta, 0.2, 2)
             self.assertAlmostEqual(phi, 0.4, 2)
@@ -376,8 +384,8 @@ class TestKernels(unittest.TestCase):
         phi_orig = self.NUMPY_LIB.array([0.4, -0.4], dtype=self.NUMPY_LIB.float32)
         mass_orig = self.NUMPY_LIB.array([100.0, 20.0], dtype=self.NUMPY_LIB.float32)
 
-        px, py, pz, e = self.ha.spherical_to_cartesian(pt_orig, eta_orig, phi_orig, mass_orig)
-        pt, eta, phi, mass = self.ha.cartesian_to_spherical(px, py, pz, e)
+        px, py, pz, e = kernels.spherical_to_cartesian(self.ha, pt_orig, eta_orig, phi_orig, mass_orig)
+        pt, eta, phi, mass = kernels.cartesian_to_spherical(self.ha, px, py, pz, e)
         self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(pt[0]), 100.0, 2)
         self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(eta[0]), 0.2, 2)
         self.assertAlmostEqual(self.NUMPY_LIB.asnumpy(phi[0]), 0.4, 2)

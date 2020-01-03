@@ -1,6 +1,7 @@
 import sys
 import warnings
 import math
+import numpy as np
 
 try:
     from numba import cuda
@@ -8,9 +9,6 @@ try:
 except ImportError as e:
     print("Could not import cupy or numba.cuda, hepaccelerate.backend_cuda not usable", file=sys.stderr)
     print("Exception: {0}".format(e.msg), file=sys.stderr)
-
-import math
-import numpy as np
 
 @cuda.jit(device=True)
 def spherical_to_cartesian_devfunc(pt, eta, phi, mass):
@@ -438,22 +436,6 @@ def compute_new_offsets_cudakernel(offsets_old, mask_objects, counts, offsets_ne
         offsets_new[iev+1] = count_tot + counts[iev]
         count_tot += counts[iev] 
 
-"""
-For all events (N), mask the objects in the first collection (M1) if they are closer than dr2 to any object in the second collection (M2).
-
-    etas1: etas of the first object, array of (M1, )
-    phis1: phis of the first object, array of (M1, )
-    mask1: mask (enabled) of the first object, array of (M1, )
-    offsets1: offsets of the first object, array of (N, )
-
-    etas2: etas of the second object, array of (M2, )
-    phis2: phis of the second object, array of (M2, )
-    mask2: mask (enabled) of the second object, array of (M2, )
-    offsets2: offsets of the second object, array of (N, )
-    
-    mask_out: output mask, array of (M1, )
-
-"""
 @cuda.jit
 def mask_deltar_first_cudakernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2, offsets2, dr2, mask_out):
     xi = cuda.grid(1)
@@ -494,10 +476,10 @@ def make_masks(offsets, content, mask_rows, mask_content):
 
 # Kernel wrappers
 
+"""
+Find indices to insert vals into arr to preserve order.
+"""
 def searchsorted(arr, vals, side="right"):
-    """
-    Find indices to insert vals into arr to preserve order.
-    """
     ret = cupy.zeros_like(vals, dtype=cupy.int32)
     if side == "right":
         searchsorted_kernel_right[32, 1024](vals, arr, ret)
@@ -519,10 +501,11 @@ def sum_in_offsets(offsets, content, mask_rows=None, mask_content=None, dtype=No
     cuda.synchronize()
     return sum_offsets
 
-def prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=None):
+def prod_in_offsets(offsets, content, mask_rows=None, mask_content=None, dtype=None):
     if not dtype:
         dtype = content.dtype
     ret = cupy.ones(len(offsets) - 1, dtype=dtype)
+    mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
     prod_in_offsets_cudakernel[32, 1024](offsets, content, mask_rows, mask_content, ret)
     cuda.synchronize()
     return ret
@@ -640,7 +623,11 @@ def histogram_from_vector_several(variables, weights, mask):
     out_w2 = out_w2.sum(axis=1)
     out_w_separated = [cupy.asnumpy(out_w[i, 0:nbins[i]-1]) for i in range(num_histograms)]
     out_w2_separated = [cupy.asnumpy(out_w2[i, 0:nbins[i]-1]) for i in range(num_histograms)]
-    return out_w_separated, out_w2_separated, all_bins
+    
+    ret = []
+    for ibin in range(len(all_bins)):
+        ret += [(out_w_separated[ibin], out_w2_separated[ibin], cupy.asnumpy(all_bins[ibin]))]
+    return ret
 
 def get_bin_contents(values, edges, contents, out):
     assert(values.shape == out.shape)

@@ -3,6 +3,8 @@ import numba
 import numpy as np
 from numba import cuda
 
+from hepaccelerate.backend_cuda import spherical_to_cartesian_devfunc
+
 @cuda.jit(device=True)
 def set_array(arr, pt, eta, phi, mass, i):
     arr[0] = pt[i]
@@ -11,16 +13,13 @@ def set_array(arr, pt, eta, phi, mass, i):
     arr[3] = mass[i]
 
 @cuda.jit(device=True)
-def spherical_to_cartesian(p4):
+def spherical_to_cartesian_arr(p4):
     pt = p4[0]
     eta = p4[1]
     phi = p4[2]
     mass = p4[3]
 
-    px = pt * math.cos(phi)
-    py = pt * math.sin(phi)
-    pz = pt * math.sinh(eta)
-    e = math.sqrt(px**2 + py**2 + pz**2 + mass**2)
+    px, py, pz, e = spherical_to_cartesian_devfunc(pt, eta, phi, mass)
     
     p4[0] = px
     p4[1] = py
@@ -54,7 +53,7 @@ def comb_3_invmass_closest(pt, eta, phi, mass, offsets, candidate_mass, out_mass
         p = cuda.local.array((maxobj, 4), numba.float32)
         for iobj in range(start, end):
             set_array(p[iobj - start, :], pt, eta, phi, mass, iobj)
-            spherical_to_cartesian(p[iobj - start, :])
+            spherical_to_cartesian_arr(p[iobj - start, :])
 
         #mass delta R to previous
         delta_previous = 1e10
@@ -107,3 +106,37 @@ def max_val_comb(vals, offsets, best_comb, out_vals):
                 vals_comb[icomb] = vals[start + idx_jet]
 
         out_vals[iev] = max_arr(vals_comb)
+
+@cuda.jit
+def compute_inv_mass_cudakernel(offsets, pts, etas, phis, masses, mask_events, mask_objects, out_inv_mass, out_pt_total):
+    xi = cuda.grid(1)
+    xstride = cuda.gridsize(1)
+    for iev in range(xi, offsets.shape[0]-1, xstride):
+        if mask_events[iev]:
+            start = np.uint64(offsets[iev])
+            end = np.uint64(offsets[iev + 1])
+            
+            px_total = np.float32(0.0)
+            py_total = np.float32(0.0)
+            pz_total = np.float32(0.0)
+            e_total = np.float32(0.0)
+            
+            for iobj in range(start, end):
+                if mask_objects[iobj]:
+                    pt = pts[iobj]
+                    eta = etas[iobj]
+                    phi = phis[iobj]
+                    mass = masses[iobj]
+
+                    px, py, pz, e = spherical_to_cartesian_devfunc(pt, eta, phi, mass)
+                    
+                    px_total += px 
+                    py_total += py 
+                    pz_total += pz 
+                    e_total += e
+
+            inv_mass = math.sqrt(-(px_total**2 + py_total**2 + pz_total**2 - e_total**2))
+            pt_total = math.sqrt(px_total**2 + py_total**2)
+            out_inv_mass[iev] = inv_mass
+            out_pt_total[iev] = pt_total
+

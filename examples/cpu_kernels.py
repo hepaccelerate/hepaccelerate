@@ -2,6 +2,8 @@ import numba
 import numpy as np
 import math
 
+from hepaccelerate.backend_cpu import spherical_to_cartesian
+
 @numba.njit
 def set_array(arr, pt, eta, phi, mass, i):
     arr[0] = pt[i]
@@ -10,16 +12,13 @@ def set_array(arr, pt, eta, phi, mass, i):
     arr[3] = mass[i]
 
 @numba.njit(fastmath=True)
-def spherical_to_cartesian(p4):
+def spherical_to_cartesian_arr(p4):
     pt = p4[0]
     eta = p4[1]
     phi = p4[2]
     mass = p4[3]
 
-    px = pt * math.cos(phi)
-    py = pt * math.sin(phi)
-    pz = pt * math.sinh(eta)
-    e = math.sqrt(px**2 + py**2 + pz**2 + mass**2)
+    px, py, pz, e = spherical_to_cartesian(pt, eta, phi, mass)
     
     p4[0] = px
     p4[1] = py
@@ -47,7 +46,7 @@ def comb_3_invmass_closest(pt, eta, phi, mass, offsets, candidate_mass, out_mass
         p[:] = 0
         for iobj in range(start, end):
             set_array(p[iobj - start, :], pt, eta, phi, mass, iobj)
-            spherical_to_cartesian(p[iobj - start, :])
+            spherical_to_cartesian_arr(p[iobj - start, :])
 
         #mass delta R to previous
         delta_previous = 1e10
@@ -95,6 +94,34 @@ def max_val_comb(vals, offsets, best_comb, out_vals):
 
         out_vals[iev] = max_arr(vals_comb)
 
-#For events with at least three leptons and a same-flavor opposite-sign lepton pair,
-#find the same-flavor opposite-sign lepton pair with the mass closest to 91.2 GeV and
-#plot the transverse mass of the missing energy and the leading other lepton.
+@numba.njit(parallel=True, fastmath=True)
+def compute_inv_mass_kernel(offsets, pts, etas, phis, masses, mask_events, mask_objects, out_inv_mass, out_pt_total):
+    for iev in numba.prange(offsets.shape[0]-1):
+        if mask_events[iev]:
+            start = np.uint64(offsets[iev])
+            end = np.uint64(offsets[iev + 1])
+            
+            px_total = np.float32(0.0)
+            py_total = np.float32(0.0)
+            pz_total = np.float32(0.0)
+            e_total = np.float32(0.0)
+            
+            for iobj in range(start, end):
+                if mask_objects[iobj]:
+                    pt = pts[iobj]
+                    eta = etas[iobj]
+                    phi = phis[iobj]
+                    mass = masses[iobj]
+
+                    px, py, pz, e = spherical_to_cartesian(pt, eta, phi, mass)
+                    
+                    px_total += px 
+                    py_total += py 
+                    pz_total += pz 
+                    e_total += e
+
+            inv_mass = np.sqrt(-(px_total**2 + py_total**2 + pz_total**2 - e_total**2))
+            pt_total = np.sqrt(px_total**2 + py_total**2)
+            out_inv_mass[iev] = inv_mass
+            out_pt_total[iev] = pt_total
+

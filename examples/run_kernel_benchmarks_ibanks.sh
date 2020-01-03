@@ -14,7 +14,7 @@ function run_kernels() {
     export PYTHONPATH=.
     export CUDA_VISIBLE_DEVICES=0
     if [ $dosingularity ]; then
-        export SINGULARITY_IMAGE=/storage/user/jpata/gpuservers/singularity/images/cupy-v2.simg
+        export SINGULARITY_IMAGE=/storage/user/jpata/gpuservers/singularity/images/cupy.simg
         singularity exec --nv $SINGULARITY_IMAGE python3 examples/timing.py
     else
         python3 examples/timing.py

@@ -8,6 +8,7 @@ import sys
 import numpy as np
 
 import hepaccelerate
+import hepaccelerate.kernels as kernels
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 
 import matplotlib
@@ -20,22 +21,22 @@ def analyze_data_function(data, parameters):
 
     num_events = data["num_events"]
     muons = data["Muon"]
-    mu_pt = NUMPY_LIB.sqrt(muons.Px**2 + muons.Py**2)
+    mu_pt = nplib.sqrt(muons.Px**2 + muons.Py**2)
     muons.attrs_data["pt"] = mu_pt
 
-    mask_events = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
+    mask_events = nplib.ones(muons.numevents(), dtype=nplib.bool)
     mask_muons_passing_pt = muons.pt > parameters["muons_ptcut"]
-    num_muons_event = ha.sum_in_offsets(muons.offsets, mask_muons_passing_pt, mask_events, muons.masks["all"], NUMPY_LIB.int8)
+    num_muons_event = kernels.sum_in_offsets(backend, muons.offsets, mask_muons_passing_pt, mask_events, muons.masks["all"], nplib.int8)
     mask_events_dimuon = num_muons_event == 2
 
     #get the leading muon pt in events that have exactly two muons
-    inds = NUMPY_LIB.zeros(num_events, dtype=NUMPY_LIB.int32)
-    leading_muon_pt = ha.get_in_offsets(muons.offsets, muons.pt, inds, mask_events_dimuon, mask_muons_passing_pt)
+    inds = nplib.zeros(num_events, dtype=nplib.int32)
+    leading_muon_pt = kernels.get_in_offsets(backend, muons.offsets, muons.pt, inds, mask_events_dimuon, mask_muons_passing_pt)
 
     #compute a weighted histogram
-    weights = NUMPY_LIB.ones(num_events, dtype=NUMPY_LIB.float32)
-    bins = NUMPY_LIB.linspace(0,300,101, dtype=NUMPY_LIB.float32)
-    hist_muons_pt = Histogram(*ha.histogram_from_vector(leading_muon_pt[mask_events_dimuon], weights[mask_events_dimuon], bins))
+    weights = nplib.ones(num_events, dtype=nplib.float32)
+    bins = nplib.linspace(0,300,101, dtype=nplib.float32)
+    hist_muons_pt = Histogram(*kernels.histogram_from_vector(backend, leading_muon_pt[mask_events_dimuon], weights[mask_events_dimuon], bins))
 
     #save it to the output
     ret["hist_leading_muon_pt"] = hist_muons_pt
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     if use_cuda:
         import setGPU
     
-    NUMPY_LIB, ha = choose_backend(use_cuda=use_cuda)
+    nplib, backend = choose_backend(use_cuda=use_cuda)
   
     #Load this input file
     filename = "data/HZZ.root"
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     dataset.merge_inplace(verbose=True)
     
     #move to GPU if CUDA was specified
-    dataset.move_to_device(NUMPY_LIB, verbose=True)
+    dataset.move_to_device(nplib, verbose=True)
     
     #process data, save output as a json file
     results = dataset.analyze(analyze_data_function, verbose=True, parameters={"muons_ptcut": 30.0})

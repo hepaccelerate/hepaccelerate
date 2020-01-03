@@ -1,7 +1,8 @@
 import numpy
 import uproot
 
-from hepaccelerate import backend_cpu as ha
+import hepaccelerate.kernels as kernels
+from hepaccelerate import backend_cpu
 
 tt = uproot.open("data/HZZ.root").get("events")
 
@@ -14,7 +15,8 @@ sel_mu = numpy.ones(len(pxs), dtype=numpy.bool)
 
 #This is the same functionality as awkward.array.max, but supports either CPU or GPU!
 #Note that events with no entries will be filled with zeros rather than skipped
-event_max_px = ha.max_in_offsets(
+event_max_px = kernels.max_in_offsets(
+    backend_cpu,
     offsets,
     pxs,
     sel_ev,

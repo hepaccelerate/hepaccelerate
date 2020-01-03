@@ -93,7 +93,7 @@ In the following, we will demonstrate that by using the data and offset arrays a
 The central result of this report is that only a small number of simple kernels, easily implemented in e.g.
 Python or C, are needed to implement a realistic HEP analysis.
 
-A prototypical HEP-specific kernel would be to find the scalar sum $H_T=\sum_{i\in\mathrm{event}}p_T^i$ of all particles passing some quality criteria in an event.
+A prototypical HEP-specific kernel would be to find the scalar sum $H_T=\sum p_T$ over all particles passing some quality criteria in an event.
 We show the Python implementation for this on the listing below.
 
 ```python
@@ -165,14 +165,16 @@ muons), masks all but the first two objects ordered by $p_T$ which are of opposi
 The kernels have been implemented in Python and just-in-time compiled to either multithreaded CPU or GPU (CUDA) code using the Numba package [@Lam:2015:NLP:2833157.2833162].
 We have chosen Python and Numba to implement the kernels in the spirit of quickly prototyping this idea in \texttt{hepaccelerate}, but this approach is not restricted to a particular programming environment.
 The total number of lines of code for both the CPU and GPU implementations of all kernels is approximately 550 for each, reflecting the relative simplicity of the code.
-We have benchmarked the performance of the kernels on preloaded data on a multicore GPU-equipped workstation\footnote{24 core Intel Xeon E5-2687W v4 @ 3.00GHz, 2x nVidia Geforce Titan X GPUs and networked storage on HDDs using CephFS connected over a 10Gbit/s LAN. We use the Intel distribution of python, numpy and numba for the multithreaded CPU backend and CUDA 10.1 for testing the GPU backend.}.
+We have benchmarked the performance of the kernels on preloaded data on a multicore GPU-equipped workstation\footnote{24 core Intel(R) Xeon(R) CPU E5-2697 v3 @ 2.60GHz, 8x nVidia Geforce GTX 1080 GPUs and networked storage on HDDs using CephFS connected over a 10Gbit/s LAN. We use the Intel distribution of python, numpy and numba for the multithreaded CPU backend and CUDA 10.1 for testing the GPU backend.}.
 The results are shown on the figure below.
 
 ![Benchmarks of the computational kernels.
-We compare the performance of the kernels on approximately 11 million preloaded events with respect to the number of CPU threads used. We find that using multiple CPU threads leads to a sublinear increase in performance, whereas the kernels on the GPU generally receive a  20-30x speedup over a single thread.
+We compare the performance of the kernels on approximately 13 million preloaded events with respect to the number of CPU threads used. We find that using multiple CPU threads leads to a sublinear increase in performance, whereas the kernels on the GPU generally receive a  20-30x speedup over a single thread.
 In particular, we find that the kernel for computing $\Delta R$ masking between two collections runs at a speed of 7 MHz on a single-thread of the CPU and is sped up by about a factor x15 using the GPU. ](plots/kernel_benchmarks.pdf){ width=8cm }
 
 We find that even complex kernels perform at speeds of tens of MHz (millions of events per second) on a single CPU thread, whereas a total speedup of approximately 20-30x over single-core performance is common on a GPU for the kernels.
+
+We also note that there is ongoing development in the particle physics community for a domain-specific language (DSL) to concisely express such jagged operations with the necessary combinatorial operations. It is expected that this language will allow efficient implementations of generic kernels on multiple backends. Our contribution is to explicitly implement the necessary kernels and thus assess the feasibility of using accelerators for data analysis before a new DSL is finalized for practical work.
 
 # Analysis benchmark
 
@@ -204,29 +206,31 @@ The timing results from the benchmark are reported in the table and figure below
 
 \begin{table}[!t]
 \centering
-\caption{Processing speed and core-hours to process one billion events for the 270M-event / 144GB analysis benchmark with partial and full systematics, running either 24 single-threaded jobs, or 4 compute streams on 2 GPUs.}
+\caption{Processing speed and core-hours to process one billion events for the 270M-event / 144GB analysis benchmark with partial and full systematics, running either 24 single-threaded jobs, or 16 compute streams on 8 GPUs.}
 \begin{tabular}{c|cc}
 job type & partial systematics & full systematics \\
 \hline
 \hline
 \multicolumn{3}{c}{total processing speed (kHz)} \\
 \hline
-1 CPU, 24 threads & 386 & 41 \\
-2 GPUs, 4 streams & 607 & 50 \\
+1 CPU, 24 threads & 197 & 20 \\
+8 GPUs, 16 streams & 1450 & 235 \\
 \hline 
 \multicolumn{3}{c}{per-unit processing speed (kHz)} \\
 \hline
-CPU thread & 16 & 1.7 \\
-GPU stream & 152 & 25 \\
+CPU thread & 8.2 & 0.8 \\
+GPU stream & 90 & 15 \\
 \hline
 \multicolumn{3}{c}{per-unit walltime to process a billion events (hours)} \\
 \hline
-CPU thread & 17 & 162 \\
-GPU stream & 1.8 & 11 \\
+CPU thread & 34 & 330 \\
+GPU stream & 3.1 & 19 \\
 \hline
 \end{tabular}
 \end{table}
-![Projected walltime to analyze 1 billion events for the top quark pair example.](plots/analysis_benchmark.pdf){ width=6cm }
+
+![Total time to analyze approximately 270M events for the top quark pair example with and without multi-GPU acceleration.](plots/analysis_benchmark.pdf){ width=4cm }
+
 ![One of the resulting plots for the top quark pair example analysis.](plots/sumpt.pdf){ width=6cm }
 
 Generally, we observe that the simpler analysis can be carried out at rate of approximately 16 kHz / CPU-thread, with the GPU-accelerated version performing about 10x faster than a single CPU thread.

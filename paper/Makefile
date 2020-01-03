@@ -18,8 +18,8 @@ ISSUE=22
 VOLUME=3
 PAGE=538
 JOURNALNAME="Journal of Open Source Software"
-PUBLISHED="19 February 2018"
-SUBMITTED="16 January 2018"
+PUBLISHED="???"
+SUBMITTED="???"
 PAPERURL=https://www.theoj.org/joss-papers/joss.00538/10.21105.joss.00538.pdf
 
 latex: $(MDFILE) $(BIBFILE)
@@ -52,9 +52,12 @@ latex: $(MDFILE) $(BIBFILE)
 	    -t latex \
 	    -s $(MDFILE) \
 	    -o $(LATEXFILE) \
-	    --from markdown+autolink_bare_uris \
-	    --template latex.template
+	    --from markdown+autolink_bare_uris
+#	    --template latex.template
 
+
+simplepdf:
+	pandoc --filter pandoc-citeproc --bibliography=$(BIBFILE) $(MDFILE) -o paper.pdf
 
 pdf: latex
 	pdflatex paper.tex

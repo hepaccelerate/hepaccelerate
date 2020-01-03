@@ -8,11 +8,12 @@ import uproot
 import numba
 
 import hepaccelerate
+import hepaccelerate.kernels as kernels
 from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
 from tests.kernel_test import load_dataset
  
 USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
-NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)
+nplib, backend = choose_backend(use_cuda=USE_CUDA)
 
 def time_kernel(dataset, test_kernel):
     #ensure it's compiled
@@ -31,13 +32,14 @@ def time_kernel(dataset, test_kernel):
 
 def test_kernel_sum_in_offsets(dataset):
     muons = dataset.structs["Muon"][0]
-    sel_ev = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
-    sel_mu = NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.bool)
-    z = ha.sum_in_offsets(
+    sel_ev = nplib.ones(muons.numevents(), dtype=nplib.bool)
+    sel_mu = nplib.ones(muons.numobjects(), dtype=nplib.bool)
+    z = kernels.sum_in_offsets(
+        backend,
         muons.offsets,
         muons.pt,
         sel_ev,
-        sel_mu, dtype=NUMPY_LIB.float32)
+        sel_mu, dtype=nplib.float32)
 
 def test_kernel_simple_cut(dataset):
     muons = dataset.structs["Muon"][0]
@@ -45,9 +47,10 @@ def test_kernel_simple_cut(dataset):
 
 def test_kernel_max_in_offsets(dataset):
     muons = dataset.structs["Muon"][0]
-    sel_ev = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
-    sel_mu = NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.bool)
-    z = ha.max_in_offsets(
+    sel_ev = nplib.ones(muons.numevents(), dtype=nplib.bool)
+    sel_mu = nplib.ones(muons.numobjects(), dtype=nplib.bool)
+    z = kernels.max_in_offsets(
+        backend,
         muons.offsets,
         muons.pt,
         sel_ev,
@@ -55,11 +58,12 @@ def test_kernel_max_in_offsets(dataset):
     
 def test_kernel_get_in_offsets(dataset):
    muons = dataset.structs["Muon"][0]
-   sel_ev = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
-   sel_mu = NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.bool)
-   inds = NUMPY_LIB.zeros(muons.numevents(), dtype=NUMPY_LIB.int8)
+   sel_ev = nplib.ones(muons.numevents(), dtype=nplib.bool)
+   sel_mu = nplib.ones(muons.numobjects(), dtype=nplib.bool)
+   inds = nplib.zeros(muons.numevents(), dtype=nplib.int8)
    inds[:] = 0
-   z = ha.get_in_offsets(
+   z = kernels.get_in_offsets(
+       backend,
        muons.offsets,
        muons.pt,
        inds,
@@ -69,10 +73,11 @@ def test_kernel_get_in_offsets(dataset):
 def test_kernel_mask_deltar_first(dataset):
     muons = dataset.structs["Muon"][0]
     jet = dataset.structs["Jet"][0]
-    sel_ev = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
-    sel_mu = NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.bool)
+    sel_ev = nplib.ones(muons.numevents(), dtype=nplib.bool)
+    sel_mu = nplib.ones(muons.numobjects(), dtype=nplib.bool)
     sel_jet = (jet.pt > 10)
-    muons_matched_to_jet = ha.mask_deltar_first(
+    muons_matched_to_jet = kernels.mask_deltar_first(
+        backend,
         {"offsets": muons.offsets, "eta": muons.eta, "phi": muons.phi},
         sel_mu,
         {"offsets": jet.offsets, "eta": jet.eta, "phi": jet.phi},
@@ -81,28 +86,29 @@ def test_kernel_mask_deltar_first(dataset):
 
 def test_kernel_histogram_from_vector(dataset):
     muons = dataset.structs["Muon"][0]
-    weights = 2*NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.float32)
-    ret = ha.histogram_from_vector(muons.pt, weights, NUMPY_LIB.linspace(0,200,100, dtype=NUMPY_LIB.float32))
+    weights = 2*nplib.ones(muons.numobjects(), dtype=nplib.float32)
+    ret = kernels.histogram_from_vector(backend, muons.pt, weights, nplib.linspace(0,200,100, dtype=nplib.float32))
 
 def test_kernel_histogram_from_vector_several(dataset):
     muons = dataset.structs["Muon"][0]
-    mask = NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.bool)
+    mask = nplib.ones(muons.numobjects(), dtype=nplib.bool)
     mask[:100] = False
-    weights = 2*NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.float32)
+    weights = 2*nplib.ones(muons.numobjects(), dtype=nplib.float32)
     variables = [
-        (muons.pt, NUMPY_LIB.linspace(0,200,100, dtype=NUMPY_LIB.float32)),
-        (muons.eta, NUMPY_LIB.linspace(-4,4,100, dtype=NUMPY_LIB.float32)),
-        (muons.phi, NUMPY_LIB.linspace(-4,4,100, dtype=NUMPY_LIB.float32)),
-        (muons.mass, NUMPY_LIB.linspace(0,200,100, dtype=NUMPY_LIB.float32)),
-        (muons.charge, NUMPY_LIB.array([-1, 0, 1, 2], dtype=NUMPY_LIB.float32)),
+        (muons.pt, nplib.linspace(0,200,100, dtype=nplib.float32)),
+        (muons.eta, nplib.linspace(-4,4,100, dtype=nplib.float32)),
+        (muons.phi, nplib.linspace(-4,4,100, dtype=nplib.float32)),
+        (muons.mass, nplib.linspace(0,200,100, dtype=nplib.float32)),
+        (muons.charge, nplib.array([-1, 0, 1, 2], dtype=nplib.float32)),
     ]
-    ret = ha.histogram_from_vector_several(variables, weights, mask)
+    ret = kernels.histogram_from_vector_several(backend, variables, weights, mask)
     
 def test_kernel_select_opposite_sign(dataset):
     muons = dataset.structs["Muon"][0]
-    sel_ev = NUMPY_LIB.ones(muons.numevents(), dtype=NUMPY_LIB.bool)
-    sel_mu = NUMPY_LIB.ones(muons.numobjects(), dtype=NUMPY_LIB.bool)
-    muons_passing_os = ha.select_opposite_sign(
+    sel_ev = nplib.ones(muons.numevents(), dtype=nplib.bool)
+    sel_mu = nplib.ones(muons.numobjects(), dtype=nplib.bool)
+    muons_passing_os = kernels.select_opposite_sign(
+        backend,
         muons.offsets, muons.charge, sel_mu)
 
 def test_timing(ds):
@@ -115,7 +121,7 @@ def run_timing(ds):
     print("Testing memory transfer speed")
     t0 = time.time()
     for i in range(5):
-        ds.move_to_device(NUMPY_LIB)
+        ds.move_to_device(nplib)
     t1 = time.time()
     dt = (t1 - t0)/5.0
 
@@ -163,5 +169,5 @@ def run_timing(ds):
     return ret
 
 if __name__ == "__main__":
-    dataset = load_dataset(NUMPY_LIB, 5)
+    dataset = load_dataset(nplib, 5)
     test_timing(dataset)

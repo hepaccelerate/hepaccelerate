@@ -1,4 +1,4 @@
-log_cpu_njec1.txt:Processed 271080719 events in 702.7 seconds, 3.86E+05 Hz
-log_cpu_njec20.txt:Processed 271080719 events in 6589.0 seconds, 4.11E+04 Hz
-log_gpu_njec1.txt:Processed 271080719 events in 446.5 seconds, 6.07E+05 Hz
-log_gpu_njec20.txt:Processed 271080719 events in 2719.6 seconds, 9.97E+04 Hz
+data/log_cpu_njec1.txt:Processed 271080719 events in 1373.2 seconds, 1.97E+05 Hz
+data/log_cpu_njec20.txt:Processed 271080719 events in 13479.1 seconds, 2.01E+04 Hz
+data/log_gpu_njec1.txt:Processed 271080719 events in 186.6 seconds, 1.45E+06 Hz
+data/log_gpu_njec20.txt:Processed 271080719 events in 1154.5 seconds, 2.35E+05 Hz

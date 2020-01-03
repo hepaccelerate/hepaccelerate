@@ -44,11 +44,11 @@ class TestHistogram(unittest.TestCase):
         bins = np.array([0,1,2,3,4,5], dtype=np.float32)
         w, w2, e = self.ha.histogram_from_vector(data, weights, bins)
 
-        ws, ws2, all_bins = self.ha.histogram_from_vector_several([(data, bins), (data, bins)], weights, mask)
-        assert(numpy.all(w == ws[0]))
-        assert(numpy.all(w == ws[1]))
-        assert(numpy.all(w2 == ws2[0]))
-        assert(numpy.all(w2 == ws2[1]))
+        histograms = self.ha.histogram_from_vector_several([(data, bins), (data, bins)], weights, mask)
+        assert(numpy.all(w == histograms[0][0]))
+        assert(numpy.all(w == histograms[1][0]))
+        assert(numpy.all(w2 == histograms[0][1]))
+        assert(numpy.all(w2 == histograms[1][1]))
 
 class TestDataset(unittest.TestCase):
     NUMPY_LIB, ha = choose_backend(use_cuda=USE_CUDA)

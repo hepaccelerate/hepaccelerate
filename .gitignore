@@ -100,3 +100,5 @@ kernel_benchmarks.txt
 *.swp
 data/*.h5
 dask-worker-space
+*.lock
+*.txt

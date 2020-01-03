@@ -15,7 +15,8 @@ install:
   - pip install hepaccelerate
 
 script:
-    - curl -k https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root -o data/nanoaod_test.root
-    - PYTHONPATH=. python setup.py test
+    - PYTHONPATH=. python hepaccelerate/kernels.py
     - PYTHONPATH=. python examples/ex1.py
     - PYTHONPATH=. python examples/ex2.py
+    - curl -k https://jpata.web.cern.ch/jpata/opendata_files/DY2JetsToLL-merged/1.root -o data/nanoaod_test.root
+    - PYTHONPATH=. python setup.py test

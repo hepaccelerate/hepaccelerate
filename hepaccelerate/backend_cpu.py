@@ -178,14 +178,6 @@ def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
             out_w[bin_idx] += np.float32(wi)
             out_w2[bin_idx] += np.float32(wi**2)
 
-"""Given a vector of muon charges and event offsets, masks the first two opposite sign muons.
-
-Args:
-    charges_content: Array of muon charges (N-elem)
-    charges_offsets: Array of event offsets
-    content_mask_in: Mask of muons to be used for this kernel (N-elem)
-    content_mask_out: Mask where the passing muons will be set to True (N-elem)
-"""
 @numba.njit(parallel=True, fastmath=True)
 def select_opposite_sign_kernel(charges_content, charges_offsets, content_mask_in, content_mask_out):
     assert(len(charges_content) == len(content_mask_in))
@@ -222,15 +214,6 @@ def select_opposite_sign_kernel(charges_content, charges_offsets, content_mask_i
                     break
     return
 
-"""Sums a content array within event offsets, taking into account masks.
-
-Args:
-    content: data array, N elements
-    offsets: event offset array, M+1 elements
-    mask_rows: events/rows to consider, M elements
-    mask_content: data elements to consider, N elements 
-    out: output array, M elements
-"""
 @numba.njit(parallel=True, fastmath=True)
 def sum_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
@@ -263,15 +246,6 @@ def prod_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
             if mask_content[ielem]:
                 out[iev] *= content[ielem]
 
-"""Finds the maximum value of a content array within events
-
-Args:
-    content: input data array, N elements
-    offsets: event offset array, M+1 elements
-    mask_rows: events/rows to consider, M elements
-    mask_content: data elements to consider, N elements 
-    out: output array, M elements
-"""
 @numba.njit(parallel=True, fastmath=True)
 def max_in_offsets_kernel(offsets, content, out, mask_rows=None, mask_content=None):
     assert(len(out) == len(offsets) - 1)
@@ -295,15 +269,6 @@ def max_in_offsets_kernel(offsets, content, out, mask_rows=None, mask_content=No
                     first = False
         out[iev] = accum
 
-"""Finds the minimum value of a content array within events
-
-Args:
-    content: input data array, N elements
-    offsets: event offset array, M+1 elements
-    mask_rows: events/rows to consider, M elements
-    mask_content: data elements to consider, N elements 
-    out: output array, M elements
-"""
 @numba.njit(parallel=True, fastmath=True)
 def min_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
@@ -326,18 +291,6 @@ def min_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
                     first = False
         out[iev] = accum
 
-"""Retrieves the n-th value of a data array in an event given offsets, where n is an index.
-
-Can be used to retrieve e.g. the pT of the second jet from each event into a contiguous array.
-
-Args:
-    content: input data array, N elements
-    offsets: event offset array, M+1 elements
-    indices: indices to retrieve from events, M elements
-    mask_rows: events/rows to consider, M elements
-    mask_content: data elements to consider, N elements 
-    out: output array, M elements
-"""
 @numba.njit(parallel=True, fastmath=True)
 def get_in_offsets_kernel(offsets, content, indices, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
@@ -360,18 +313,6 @@ def get_in_offsets_kernel(offsets, content, indices, mask_rows, mask_content, ou
                 else:
                     index_to_get += 1
 
-"""Sets the n-th value of a data array in an event given offsets, where n is an index.
-
-Can be used to set e.g. the pT of the second jet in each event to a value from a contiguous array.
-
-Args:
-    offsets: event offset array, M+1 elements
-    content: input data array, N elements
-    indices: indices to set in events, M elements
-    target: target values to set in events, M elements
-    mask_rows: events/rows to consider, M elements
-    mask_content: data elements to consider, N elements 
-"""
 @numba.njit(parallel=True, fastmath=True)
 def set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_content):
     for iev in numba.prange(offsets.shape[0] - 1):
@@ -389,13 +330,6 @@ def set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_con
                 else:
                     index_to_set += 1
 
-"""Converts an array of N per-event values to an array of M per-object values using broadcasting.
-
-Args:
-    offsets: event offset array, M+1 elements
-    content: input data array of per-event values, M elements
-    out: output array of per-object values, N elements
-"""
 @numba.njit(parallel=True, fastmath=True)
 def broadcast(offsets, content, out):
     assert(offsets.shape[0] - 1 == content.shape[0])
@@ -405,23 +339,6 @@ def broadcast(offsets, content, out):
         for ielem in range(start, end):
             out[ielem] = content[iev]
  
-""" For all events (N), mask the objects in the first collection (M1)
-  if closer than dr2 to any object in the second collection (M2).
-
-Args:
-    etas1: etas of the first object, array of (M1, )
-    phis1: phis of the first object, array of (M1, )
-    mask1: mask (enabled) of the first object, array of (M1, )
-    offsets1: offsets of the first object, array of (N, )
-
-    etas2: etas of the second object, array of (M2, )
-    phis2: phis of the second object, array of (M2, )
-    mask2: mask (enabled) of the second object, array of (M2, )
-    offsets2: offsets of the second object, array of (N, )
-    
-    mask_out: output mask, array of (M1, )
-
-"""
 @numba.njit(parallel=True, fastmath=True)
 def mask_deltar_first_kernel(etas1, phis1, mask1, offsets1, etas2, phis2, mask2, offsets2, dr2, mask_out):
     
@@ -480,8 +397,8 @@ def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
 
 @numba.njit(parallel=True, fastmath=True)
 def compute_new_offsets(offsets_old, mask_objects, offsets_new):
-    counts = np.zeros(len(offsets_old)-1, dtype=np.int64)
-    for iev in numba.prange(len(offsets_old)-1):
+    counts = np.zeros(len(offsets_old) - 1, dtype=np.int64)
+    for iev in numba.prange(len(offsets_old) - 1):
         start = offsets_old[iev]
         end = offsets_old[iev + 1]
         ret = 0
@@ -489,6 +406,7 @@ def compute_new_offsets(offsets_old, mask_objects, offsets_new):
             if mask_objects[ielem]:
                 ret += 1
             counts[iev] = ret
+
     count_tot = 0
     for iev in range(len(counts)):
         offsets_new[iev] = count_tot
@@ -546,25 +464,6 @@ def set_in_offsets(offsets, content, indices, target, mask_rows=None, mask_conte
     mask_rows, mask_content = make_masks(offsets, content, mask_rows, mask_content) 
     set_in_offsets_kernel(offsets, content, indices, target, mask_rows, mask_content)
 
-##
-## Masks the objects in objs1 that are closer than drcut to objects in objs2.
-##
-## :param      objs1:           The objects to mask (e.g. jets)
-## :type       objs1:           { "eta": array, "phi": array, "offsets": array }
-## :param      mask1:           The selected objects to consider
-## :type       mask1:           { array of bool }
-## :param      objs2:           The objects to mask against (e.g. leptons)
-## :type       objs2:           { "eta": array, "phi": array, "offsets": array }
-## :param      mask2:           The selected objects to consider (e.g. selected leptons)
-## :type       mask2:           { array of bool }
-## :param      drcut:           value of delta R
-## :type       drcut:           { float }
-##
-## :returns:   { mask for the objects in objs1 }
-## :rtype:     { array of bool }
-##
-## :raises     AssertionError:  { in case shapes do not match }
-##
 def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
     assert(mask1.shape == objs1["eta"].shape)
     assert(mask2.shape == objs2["eta"].shape)
@@ -581,19 +480,6 @@ def mask_deltar_first(objs1, mask1, objs2, mask2, drcut):
     mask_out = np.invert(mask_out)
     return mask_out
 
-##
-## Fills several arrays of the same length into several 1D histograms
-##
-## :param      variables:  Pairs of (data array, bins) to fill into histograms
-## :type       variables:  List of tuples (data array, bins)
-## :param      weights:    The per-sample weights
-## :type       weights:    array of floats
-## :param      mask:       Selected samples
-## :type       mask:       array of bools
-##
-## :returns:   weights, weights^2, bins of all the resulting histograms
-## :rtype:     (weights, weights^2, bins), where each is a list
-##
 def histogram_from_vector_several(variables, weights, mask):
     all_arrays = []
     all_bins = []
@@ -623,7 +509,11 @@ def histogram_from_vector_several(variables, weights, mask):
     )
     out_w_separated = [out_w[i, 0:nbins[i]-1] for i in range(num_histograms)]
     out_w2_separated = [out_w2[i, 0:nbins[i]-1] for i in range(num_histograms)]
-    return out_w_separated, out_w2_separated, all_bins
+
+    ret = []
+    for ibin in range(len(all_bins)):
+        ret += [(out_w_separated[ibin], out_w2_separated[ibin], all_bins[ibin])]
+    return ret
 
 def histogram_from_vector(data, weights, bins, mask=None):
     assert(len(data) == len(weights))
