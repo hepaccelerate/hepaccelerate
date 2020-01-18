@@ -1,3 +1,4 @@
+[![GitHub Actions Status: CI](https://github.com/hepaccelerate/hepaccelerate/workflows/CI/CD/badge.svg)](https://github.com/hepaccelerate/hepaccelerate/actions?query=workflow%3ACI%2FCD+branch%3Amaster)
 [![Build Status](https://travis-ci.com/hepaccelerate/hepaccelerate.svg?branch=master)](https://travis-ci.com/hepaccelerate/hepaccelerate)
 [![pipeline status](https://gitlab.cern.ch/jpata/hepaccelerate/badges/master/pipeline.svg)](https://gitlab.cern.ch/jpata/hepaccelerate/commits/master)
 [![DOI](https://zenodo.org/badge/191644111.svg)](https://zenodo.org/badge/latestdoi/191644111)
