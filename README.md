@@ -7,7 +7,7 @@
 
 - Fast kernels for HEP data analysis with [jagged arrays](https://github.com/scikit-hep/awkward-array) using python + [Numba](http://numba.pydata.org/)
 - Use **any ntuple**, as long as you can open it with [uproot](https://github.com/scikit-hep/uproot)
-- analyze a billion events with systematic to histograms in minutes on a single workstation
+- analyze a billion events with systematics to histograms in minutes on a single workstation
   - 1e9 events / (50 kHz x 24 CPU threads) ~ 13 minutes
 - weighted histograms, deltaR matching and [more](https://github.com/hepaccelerate/hepaccelerate#kernels)
 - use a CPU or an nVidia CUDA GPU with the same interface!
