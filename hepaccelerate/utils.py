@@ -16,27 +16,41 @@ import awkward
 import copy
 import requests
 
-def load_arrays_attempts(tt, arrays_to_load, executor=None, entrystart=None, entrystop=None, num_attempts=3):
-    done = False 
+
+def load_arrays_attempts(
+    tt, arrays_to_load, executor=None, entrystart=None, entrystop=None, num_attempts=3
+):
+    done = False
     failed = False
     nfailed = 0
 
     while not done:
         try:
-            arrs = tt.arrays(arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
+            arrs = tt.arrays(
+                arrays_to_load,
+                executor=executor,
+                entrystart=entrystart,
+                entrystop=entrystop,
+            )
             return arrs
         except requests.exceptions.ConnectionError as e:
-            print("load_arrays_attempt: Error loading data over HTTP, attempt {0}/{1}".format(nfailed, num_attempts), file=sys.stderr)
+            print(
+                "load_arrays_attempt: Error loading data over HTTP, attempt {0}/{1}".format(
+                    nfailed, num_attempts
+                ),
+                file=sys.stderr,
+            )
             nfailed += 1
             if nfailed >= num_attempts:
                 done = True
                 failed = True
 
     if failed:
-       raise Exception("Could not open ROOT files: {0}".format(self.filenames))
+        raise Exception("Could not open ROOT files: {0}".format(self.filenames))
+
 
 def uproot_open_attempts(fn, num_attempts=3):
-    done = False 
+    done = False
     failed = False
     nfailed = 0
 
@@ -45,14 +59,21 @@ def uproot_open_attempts(fn, num_attempts=3):
             ret = uproot.open(fn)
             return ret
         except requests.exceptions.ConnectionError as e:
-            print("uproot_open_attempts: Error loading file {0} over HTTP, attempt {1}/{2}".format(fn, nfailed, num_attempts), file=sys.stderr)
+            print(
+                "uproot_open_attempts: Error loading file {0} over HTTP, attempt {1}/{2}".format(
+                    fn, nfailed, num_attempts
+                ),
+                file=sys.stderr,
+            )
             nfailed += 1
             if nfailed >= num_attempts:
                 done = True
                 failed = True
 
     if failed:
-       raise Exception("Could not open ROOT files: {0}".format(self.filenames))
+        raise Exception("Could not open ROOT files: {0}".format(self.filenames))
+
+
 """
 Choose either the CPU(numpy) or GPU/CUDA(cupy) backend.
 
@@ -61,35 +82,50 @@ Args:
 
 Returns: (handle to numpy or cupy library, handle to hepaccelerate backend module)
 """
+
+
 def choose_backend(use_cuda=False):
     if use_cuda:
         import cupy
+
         NUMPY_LIB = cupy
         import hepaccelerate.backend_cuda as ha
+
         NUMPY_LIB.searchsorted = ha.searchsorted
     else:
         import numpy as numpy
+
         NUMPY_LIB = numpy
         import hepaccelerate.backend_cpu as ha
+
         NUMPY_LIB.asnumpy = numpy.array
     return NUMPY_LIB, ha
+
 
 """
 Simple one-dimensional histogram from a content array (weighted),
 content array with squared weights and an edge array.
 """
+
+
 class Histogram:
     def __init__(self, contents, contents_w2, edges):
         self.contents = np.array(contents)
         self.contents_w2 = np.array(contents_w2)
         self.edges = np.array(edges)
-    
+
     def __add__(self, other):
-        assert(np.all(self.edges == other.edges))
-        return Histogram(self.contents +  other.contents, self.contents_w2 +  other.contents_w2, self.edges)
+        assert np.all(self.edges == other.edges)
+        return Histogram(
+            self.contents + other.contents,
+            self.contents_w2 + other.contents_w2,
+            self.edges,
+        )
 
     def __mul__(self, number):
-        return Histogram(number * self.contents, number * number * self.contents_w2, self.edges)
+        return Histogram(
+            number * self.contents, number * number * self.contents_w2, self.edges
+        )
 
     def __rmul__(self, number):
         return self.__mul__(number)
@@ -98,92 +134,114 @@ class Histogram:
     def from_dict(d):
         return Histogram(d["contents"], d["contents_w2"], d["edges"])
 
+
 """
 Collects multiple jagged arrays together into a logical struct.
 
 A JaggedStruct consists of 1-dimensional data arrays and an offset array encoding
 the event boundaries.
 """
+
+
 class JaggedStruct(object):
     def __init__(self, offsets, attrs_data, prefix, numpy_lib, attr_names_dtypes):
         self.numpy_lib = numpy_lib
         self.hepaccelerate_backend = None
-        
+
         self.offsets = offsets
         self.attrs_data = attrs_data
         self.attr_names_dtypes = attr_names_dtypes
         self.prefix = prefix
-        
+
         num_items = None
         for (k, v) in self.attrs_data.items():
             num_items_next = len(v)
             if num_items and num_items != num_items_next:
-                raise AttributeError("Attribute {0} had an unequal number of elements".format(k))
+                raise AttributeError(
+                    "Attribute {0} had an unequal number of elements".format(k)
+                )
             else:
                 num_items = num_items_next
         self.num_items = num_items
 
-        #Check all the loaded branches
+        # Check all the loaded branches
         for branch, dtype in self.attr_names_dtypes:
             branch_name = branch.replace(self.prefix, "")
             arr = self.attrs_data[branch_name]
             if arr.dtype != getattr(self.numpy_lib, dtype):
-                print("Warning in reading the ROOT TTree: branch {0} declared as {1} but was {2}, casting".format(branch, dtype, arr.dtype), file=sys.stderr)
-                self.attrs_data[branch_name] = self.attrs_data[branch_name].view(dtype) 
-        
+                print(
+                    "Warning in reading the ROOT TTree: branch {0} declared as {1} but was {2}, casting".format(
+                        branch, dtype, arr.dtype
+                    ),
+                    file=sys.stderr,
+                )
+                self.attrs_data[branch_name] = self.attrs_data[branch_name].view(dtype)
+
         self.masks = {}
         self.masks["all"] = self.make_mask()
-    
+
     """Creates a new mask for each item in the struct array
     """
+
     def make_mask(self):
         return self.numpy_lib.ones(self.num_items, dtype=self.numpy_lib.bool)
-    
+
     """Retrieves a named mask
     """
+
     def mask(self, name):
         if not name in self.masks.keys():
             self.masks[name] = self.make_mask()
         return self.masks[name]
-    
+
     """Computes the size of the array in memory
     """
+
     def memsize(self):
         size_tot = self.offsets.size
         for k, v in self.attrs_data.items():
             size_tot += v.nbytes
         return size_tot
-    
+
     """Retrieves the number of events corresponding to this jagged array
     """
+
     def numevents(self):
         return len(self.offsets) - 1
 
     """Retrieves the number of objects stored in the jagged array
     """
+
     def numobjects(self):
         for k, v in self.attrs_data.items():
             return len(self.attrs_data[k])
-    
+
     @staticmethod
     def from_arraydict(arraydict, prefix, numpy_lib, attr_names_dtypes):
         ks = [k for k in arraydict.keys()]
-        assert(len(ks)>0)
+        assert len(ks) > 0
         k0 = ks[0]
         return JaggedStruct(
             numpy_lib.array(arraydict[k0].offsets),
-            {k.replace(prefix, ""): numpy_lib.array(v.content)
-             for (k,v) in arraydict.items()},
-            prefix, numpy_lib, attr_names_dtypes
+            {
+                k.replace(prefix, ""): numpy_lib.array(v.content)
+                for (k, v) in arraydict.items()
+            },
+            prefix,
+            numpy_lib,
+            attr_names_dtypes,
         )
 
     """Transfers the JaggedStruct data to either the GPU or system memory
     based on a numpy array
     """
+
     def move_to_device(self, numpy_lib):
         self.numpy_lib = numpy_lib
         new_offsets = self.numpy_lib.array(self.offsets)
-        new_attrs_data = {k: self.numpy_lib.array(v) for k, v in self.attrs_data.items()}
+        new_attrs_data = {
+            k: self.numpy_lib.array(v) for k, v in self.attrs_data.items()
+        }
         self.offsets = new_offsets
         self.attrs_data = new_attrs_data
 
@@ -191,11 +249,14 @@ class JaggedStruct(object):
         return JaggedStruct(
             self.offsets.copy(),
             {k: v.copy() for k, v in self.attrs_data.items()},
-            self.prefix, self.numpy_lib, copy.deepcopy(self.attr_names_dtypes)
+            self.prefix,
+            self.numpy_lib,
+            copy.deepcopy(self.attr_names_dtypes),
         )
 
     """Retrieves an attribute from the JaggedStruct
     """
+
     def __getattr__(self, attr):
         if attr in self.attrs_data.keys():
             return self.attrs_data[attr]
@@ -203,10 +264,11 @@ class JaggedStruct(object):
 
     def __getitem__(self, attr):
         return self.attrs_data[attr]
-    
+
     def __repr__(self):
         s = "JaggedStruct(prefix={0}, numevents={1}, numobjects={2}, attrs_data=".format(
-            self.prefix, self.numevents(), self.numobjects())
+            self.prefix, self.numevents(), self.numobjects()
+        )
         s += "\n" + str(self.attrs_data) + ")"
         return s
 
@@ -219,42 +281,57 @@ class JaggedStruct(object):
 
     returns: a new JaggedStruct with the masked elements removed
     """
+
     def compact_struct(self, event_mask):
-        assert(len(event_mask) == self.numevents())
-        
+        assert len(event_mask) == self.numevents()
+
         new_attrs_data = {}
-        new_offsets = None 
+        new_offsets = None
         for attr_name, flat_array in self.attrs_data.items():
 
-            #https://github.com/scikit-hep/awkward-array/issues/130
+            # https://github.com/scikit-hep/awkward-array/issues/130
             offsets_int64 = self.offsets.view(np.int64)
             if np.any(offsets_int64 != self.offsets):
                 raise Exception("Failed to convert offsets from uint64 to int64")
 
-            #Create a new jagged array given the offsets and flat contents
+            # Create a new jagged array given the offsets and flat contents
             ja = awkward.JaggedArray.fromoffsets(offsets_int64, flat_array)
 
-            #Create a compactified array with the masked elements dropped
+            # Create a compactified array with the masked elements dropped
             ja_reduced = ja[event_mask].compact()
 
-            #Get the new flat array contents
+            # Get the new flat array contents
             new_attrs_data[attr_name] = ja_reduced.content
             new_offsets = ja_reduced.offsets
 
-        return JaggedStruct(new_offsets, new_attrs_data, self.prefix, self.numpy_lib, self.attr_names_dtypes)
+        return JaggedStruct(
+            new_offsets,
+            new_attrs_data,
+            self.prefix,
+            self.numpy_lib,
+            self.attr_names_dtypes,
+        )
 
     def select_objects(self, object_mask):
-        assert(len(object_mask) == self.numobjects())
-        
+        assert len(object_mask) == self.numobjects()
+
         new_attrs_data = {}
-        new_offsets = None 
+        new_offsets = None
         new_attrs_data = {k: v[object_mask] for k, v in self.attrs_data.items()}
         new_offsets = self.numpy_lib.zeros_like(self.offsets)
-        self.hepaccelerate_backend.compute_new_offsets(self.offsets, object_mask, new_offsets)
-        ret = JaggedStruct(new_offsets, new_attrs_data, self.prefix, self.numpy_lib, self.attr_names_dtypes)
+        self.hepaccelerate_backend.compute_new_offsets(
+            self.offsets, object_mask, new_offsets
+        )
+        ret = JaggedStruct(
+            new_offsets,
+            new_attrs_data,
+            self.prefix,
+            self.numpy_lib,
+            self.attr_names_dtypes,
+        )
         ret.hepaccelerate_backend = self.hepaccelerate_backend
         return ret
-        
+
     def select_nth(self, idx, event_mask=None, object_mask=None, attributes=None):
         if type(idx) == int:
             inds = self.numpy_lib.zeros(self.numevents(), dtype=self.numpy_lib.int32)
@@ -265,16 +342,22 @@ class JaggedStruct(object):
             raise TypeError("idx must be int or numpy/cupy ndarray")
 
         if event_mask is None:
-            event_mask = self.numpy_lib.ones(self.numevents(), dtype=self.numpy_lib.bool)
+            event_mask = self.numpy_lib.ones(
+                self.numevents(), dtype=self.numpy_lib.bool
+            )
 
         if object_mask is None:
-            object_mask = self.numpy_lib.ones(self.numobjects(), dtype=self.numpy_lib.bool)
+            object_mask = self.numpy_lib.ones(
+                self.numobjects(), dtype=self.numpy_lib.bool
+            )
 
         if attributes is None:
             attributes = self.attrs_data.keys()
 
         new_attrs = {
-            attr_name: self.hepaccelerate_backend.get_in_offsets(self.offsets, getattr(self, attr_name), inds, event_mask, object_mask)
+            attr_name: self.hepaccelerate_backend.get_in_offsets(
+                self.offsets, getattr(self, attr_name), inds, event_mask, object_mask
+            )
             for attr_name in attributes
         }
 
@@ -287,13 +370,16 @@ class JaggedStruct(object):
             for o in others:
                 data_arrs += [o.attrs_data[k]]
             new_attrs[k] = self.numpy_lib.hstack(data_arrs)
-        
+
         offset_arrs = [self.offsets]
         for o in others:
-            offset_arrs += [o.offsets[1:]+ offset_arrs[-1][-1]]
+            offset_arrs += [o.offsets[1:] + offset_arrs[-1][-1]]
         offsets = self.numpy_lib.hstack(offset_arrs)
 
-        return JaggedStruct(offsets, new_attrs, self.prefix, self.numpy_lib, self.attr_names_dtypes)
+        return JaggedStruct(
+            offsets, new_attrs, self.prefix, self.numpy_lib, self.attr_names_dtypes
+        )
+
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -303,17 +389,20 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.__dict__
         return json.JSONEncoder.default(self, obj)
 
+
 """
 Dictionary that can be added to others using +
 """
+
+
 class Results(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
     def __add__(self, other):
         d0 = self
         d1 = other
-        
+
         d_ret = Results({})
         k0 = set(d0.keys())
         k1 = set(d1.keys())
@@ -328,14 +417,17 @@ class Results(dict):
             d_ret[k] = d1[k]
 
         return d_ret
-    
+
     def save_json(self, outfn):
         with open(outfn, "w") as fi:
             fi.write(json.dumps(dict(self), indent=2, cls=NumpyEncoder))
 
+
 """
 Generic uproot dataset
 """
+
+
 class BaseDataset(object):
     def __init__(self, filenames, arrays_to_load, treename):
         self.filenames = filenames
@@ -348,32 +440,46 @@ class BaseDataset(object):
         t0 = time.time()
         nevents = 0
 
-        #Print a warning if a slow compression method is used
+        # Print a warning if a slow compression method is used
         compression_warning = True
 
         for ifn, fn in enumerate(self.filenames):
             fi = uproot_open_attempts(fn)
-            if compression_warning and not "lz4" in str(fi._context.compression):  
-                print("Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
-                    fn,
-                    fi._context.compression
-                ))
+            if compression_warning and not "lz4" in str(fi._context.compression):
+                print(
+                    "Warning: file {0} uses a compression method {1}, which is slower to open than lz4. Skipping further warnings about compression.".format(
+                        fn, fi._context.compression
+                    )
+                )
                 compression_warning = False
- 
+
             tt = fi.get(self.treename)
             nevents += len(tt)
             if nthreads > 1:
                 from concurrent.futures import ThreadPoolExecutor
+
                 with ThreadPoolExecutor(max_workers=nthreads) as executor:
-                    arrs = load_arrays_attempts(tt, self.arrays_to_load, executor=executor, entrystart=entrystart, entrystop=entrystop)
+                    arrs = load_arrays_attempts(
+                        tt,
+                        self.arrays_to_load,
+                        executor=executor,
+                        entrystart=entrystart,
+                        entrystop=entrystop,
+                    )
             else:
-                arrs = load_arrays_attempts(tt, self.arrays_to_load, entrystart=entrystart, entrystop=entrystop)
+                arrs = load_arrays_attempts(
+                    tt, self.arrays_to_load, entrystart=entrystart, entrystop=entrystop
+                )
             self.data_host += [arrs]
 
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("preload: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(nevents, dt, nevents/dt))
+            print(
+                "preload: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(
+                    nevents, dt, nevents / dt
+                )
+            )
 
     def num_events_raw(self):
         nev = 0
@@ -385,15 +491,25 @@ class BaseDataset(object):
     def __len__(self):
         return self.num_events_raw()
 
+
 """
 Dataset that supports caching
 """
+
+
 class Dataset(BaseDataset):
     numpy_lib = np
-    
-    def __init__(self, name, filenames, datastructures,
-        datapath="", treename="Events", is_mc=True):
-        
+
+    def __init__(
+        self,
+        name,
+        filenames,
+        datastructures,
+        datapath="",
+        treename="Events",
+        is_mc=True,
+    ):
+
         self.datapath = datapath
         self.name = name
 
@@ -402,14 +518,16 @@ class Dataset(BaseDataset):
             for branch, dtype in ds_vals:
                 arrays_to_load += [branch]
         super(Dataset, self).__init__(filenames, arrays_to_load, treename)
-        
+
         self.eventvars_dtypes = datastructures.get("EventVariables")
-        self.names_eventvars = [evvar for evvar, dtype in self.eventvars_dtypes] 
-        self.structs_dtypes = {k: v for (k, v) in datastructures.items() if k != "EventVariables"}
+        self.names_eventvars = [evvar for evvar, dtype in self.eventvars_dtypes]
+        self.structs_dtypes = {
+            k: v for (k, v) in datastructures.items() if k != "EventVariables"
+        }
         self.names_structs = sorted(self.structs_dtypes.keys())
         self.is_mc = is_mc
-         
-        #lists of data, one per file
+
+        # lists of data, one per file
         self.structs = {}
         for structname in self.names_structs:
             self.structs[structname] = []
@@ -420,7 +538,7 @@ class Dataset(BaseDataset):
     def merge_inplace(self, verbose=True):
 
         t0 = time.time()
-        #nothing to do
+        # nothing to do
         if len(self.filenames) == 1:
             return
 
@@ -438,17 +556,21 @@ class Dataset(BaseDataset):
             js = s0.concatenate(self.structs[structname][1:])
             new_structs[structname] = [js]
         new_structs = new_structs
-        
+
         self.structs = new_structs
-        self.eventvars = eventvars 
+        self.eventvars = eventvars
         self.numfiles = 1
         numevents_after = self.numevents()
-        assert(numevents_after == numevents_before)
-        
+        assert numevents_after == numevents_before
+
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("merge_inplace: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
+            print(
+                "merge_inplace: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(
+                    len(self), dt, len(self) / dt
+                )
+            )
 
     def move_to_device(self, numpy_lib, verbose=False):
         t0 = time.time()
@@ -457,12 +579,18 @@ class Dataset(BaseDataset):
             for structname in self.names_structs:
                 self.structs[structname][ifile].move_to_device(numpy_lib)
             for evvar in self.names_eventvars:
-                self.eventvars[ifile][evvar] = numpy_lib.array(self.eventvars[ifile][evvar])
+                self.eventvars[ifile][evvar] = numpy_lib.array(
+                    self.eventvars[ifile][evvar]
+                )
 
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("move_to_device: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
+            print(
+                "move_to_device: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(
+                    len(self), dt, len(self) / dt
+                )
+            )
 
     def memsize(self):
         tot = 0
@@ -476,8 +604,8 @@ class Dataset(BaseDataset):
     def eventsize(self):
         nev = self.numevents()
         mem = self.memsize()
-        return mem/nev
- 
+        return mem / nev
+
     def __repr__(self):
         nev = 0
         try:
@@ -485,62 +613,84 @@ class Dataset(BaseDataset):
         except Exception as e:
             pass
         s = "Dataset(name={0}, numfiles={1}, numevents={2}, structs={3}, eventvariables={4})".format(
-            self.name, self.numfiles, nev, self.structs, self.eventvars)
+            self.name, self.numfiles, nev, self.structs, self.eventvars
+        )
         return s
 
     def printout(self):
-        s = str(self) 
+        s = str(self)
         for structname in self.structs.keys():
             s += "\n"
-            s += "  {0}({1}, {2})".format(structname, self.num_objects_loaded(structname), ", ".join(self.structs[structname][0].attrs_data.keys()))
+            s += "  {0}({1}, {2})".format(
+                structname,
+                self.num_objects_loaded(structname),
+                ", ".join(self.structs[structname][0].attrs_data.keys()),
+            )
         s += "\n"
-        s += "  EventVariables({0}, {1})".format(len(self), ", ".join(self.names_eventvars))
-        return s    
+        s += "  EventVariables({0}, {1})".format(
+            len(self), ", ".join(self.names_eventvars)
+        )
+        return s
 
     def load_root(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
-        self.preload(nthreads, entrystart=entrystart, entrystop=entrystop, verbose=verbose)
+        self.preload(
+            nthreads, entrystart=entrystart, entrystop=entrystop, verbose=verbose
+        )
         self.make_objects(verbose=verbose)
 
     def preload(self, nthreads=1, verbose=False, entrystart=None, entrystop=None):
-        super(Dataset, self).preload(nthreads, verbose, entrystart=entrystart, entrystop=entrystop)
- 
+        super(Dataset, self).preload(
+            nthreads, verbose, entrystart=entrystart, entrystop=entrystop
+        )
+
     def build_structs(self, prefix):
         ret = []
 
-        #Loop over the loaded data for each file
+        # Loop over the loaded data for each file
         for arrs in self.data_host:
-            #convert keys to ascii from bytestring
-            arrs = {str(k, 'ascii'): v for k, v in arrs.items()}
+            # convert keys to ascii from bytestring
+            arrs = {str(k, "ascii"): v for k, v in arrs.items()}
 
             selected_array_names = []
-            #here we collect all arrays from the dict of loaded arrays that start with 'prefix_'.
+            # here we collect all arrays from the dict of loaded arrays that start with 'prefix_'.
             for arrname, dtype in self.structs_dtypes[prefix]:
                 if not (arrname in arrs.keys()):
-                    raise Exception("Could not find array {0} for collection {1} in loaded arrays {2}".format(
-                        arrname, prefix, arrs.keys()
-                    ))
+                    raise Exception(
+                        "Could not find array {0} for collection {1} in loaded arrays {2}".format(
+                            arrname, prefix, arrs.keys()
+                        )
+                    )
                 selected_array_names += [arrname]
 
             if len(selected_array_names) == 0:
-                raise Exception("Could not find any arrays matching with {0}_: {1}".format(prefix, arrs.keys()))
+                raise Exception(
+                    "Could not find any arrays matching with {0}_: {1}".format(
+                        prefix, arrs.keys()
+                    )
+                )
 
-            #check that all shapes match, otherwise there was a naming convention error
+            # check that all shapes match, otherwise there was a naming convention error
             arrs_selected = [arrs[n] for n in selected_array_names]
             for i, arr in enumerate(arrs_selected):
-                if (int(arr.shape[0]) != int(arrs_selected[0].shape[0])):
+                if int(arr.shape[0]) != int(arrs_selected[0].shape[0]):
                     raise Exception(
-                        "matched array with name {0} ".format(selected_array_names[i]) +
-                        "had incompatible shape to other arrays " + 
-                        "with prefix={0}, cannot build a struct.".format(prefix) +
-                        "Please check that all the arrays in {0} belong to the same object.".format(selected_array_names))
+                        "matched array with name {0} ".format(selected_array_names[i])
+                        + "had incompatible shape to other arrays "
+                        + "with prefix={0}, cannot build a struct.".format(prefix)
+                        + "Please check that all the arrays in {0} belong to the same object.".format(
+                            selected_array_names
+                        )
+                    )
 
-            #load the arrays and convert to JaggedStruct
+            # load the arrays and convert to JaggedStruct
             struct = JaggedStruct.from_arraydict(
                 {k: arrs[k] for k in selected_array_names},
-                prefix + "_", self.numpy_lib, self.structs_dtypes[prefix]
+                prefix + "_",
+                self.numpy_lib,
+                self.structs_dtypes[prefix],
             )
             ret += [struct]
-        
+
         return ret
 
     def make_objects(self, verbose=False):
@@ -549,15 +699,22 @@ class Dataset(BaseDataset):
         for structname in self.names_structs:
             self.structs[structname] = self.build_structs(structname)
 
-        self.eventvars = [{
-            k: self.numpy_lib.array(data[bytes(k, encoding='ascii')])
+        self.eventvars = [
+            {
+                k: self.numpy_lib.array(data[bytes(k, encoding="ascii")])
                 for k in self.names_eventvars
-        } for data in self.data_host]
-  
+            }
+            for data in self.data_host
+        ]
+
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("make_objects: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(len(self), dt, len(self)/dt))
+            print(
+                "make_objects: {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz".format(
+                    len(self), dt, len(self) / dt
+                )
+            )
 
     def analyze(self, analyze_data, verbose=False, **kwargs):
         t0 = time.time()
@@ -573,30 +730,36 @@ class Dataset(BaseDataset):
         t1 = time.time()
         dt = t1 - t0
         if verbose:
-            print("analyze: processed analysis with {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz, {3:.2E} MB/s".format(len(self), dt, len(self)/dt, self.memsize()/dt/1024.0/1024.0))
+            print(
+                "analyze: processed analysis with {0:.2E} events in {1:.1f} seconds, {2:.2E} Hz, {3:.2E} MB/s".format(
+                    len(self), dt, len(self) / dt, self.memsize() / dt / 1024.0 / 1024.0
+                )
+            )
         return sum(rets, Results({}))
 
     @staticmethod
     def makedir_safe(dn):
-        #maybe directory was already created by another worker
+        # maybe directory was already created by another worker
         try:
             os.makedirs(dn)
         except FileExistsError as e:
             pass
- 
+
     def num_objects_loaded(self, structname):
         n_objects = 0
         for ifn in range(self.numfiles):
             n_objects += self.structs[structname][ifn].numobjects()
         return n_objects
-   
+
     def numevents(self):
         structname = list(self.structs.keys())[0]
         return self.num_events_loaded(structname)
 
     def num_events_loaded(self, structname):
         if len(self.structs[structname]) == 0:
-            raise Exception("Dataset not yet loaded from ROOT file, call dataset.load_root() or dataset.from_cache()")
+            raise Exception(
+                "Dataset not yet loaded from ROOT file, call dataset.load_root() or dataset.from_cache()"
+            )
         n_events = 0
         for ifn in range(self.numfiles):
             n_events += self.structs[structname][ifn].numevents()
@@ -611,12 +774,17 @@ class Dataset(BaseDataset):
 
     """Events in this dataset that do not pass the mask are dropped.
     """
+
     def compact(self, masks):
         for ifile in range(self.numfiles):
             for structname in self.names_structs:
-                self.structs[structname][ifile] = self.structs[structname][ifile].compact_struct(masks[ifile])
+                self.structs[structname][ifile] = self.structs[structname][
+                    ifile
+                ].compact_struct(masks[ifile])
             for evvar in self.names_eventvars:
-                self.eventvars[ifile][evvar] = self.eventvars[ifile][evvar][masks[ifile]]
+                self.eventvars[ifile][evvar] = self.eventvars[ifile][evvar][
+                    masks[ifile]
+                ]
 
     def __len__(self):
         n_events_raw = self.num_events_raw()
@@ -626,6 +794,7 @@ class Dataset(BaseDataset):
             return n_events_loaded[kfirst]
         else:
             return n_events_raw
+
 
 ###
 ### back-ported from https://github.com/CoffeaTeam/coffea
@@ -661,20 +830,19 @@ class Dataset(BaseDataset):
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
 class LumiMask(object):
     """
         Class that parses a 'golden json' into an efficient valid lumiSection lookup table
         Instantiate with the json file, and call with an array of runs and lumiSections, to
         return a boolean array, where valid lumiSections are marked True
     """
+
     def __init__(self, jsonfile, numpy_lib, backend):
         with open(jsonfile) as fin:
             goldenjson = json.load(fin)
-        self._masks = Dict.empty(
-            key_type=types.int64,
-            value_type=types.int64[:]
-        )
-        #self._masks = {}
+        self._masks = Dict.empty(key_type=types.int64, value_type=types.int64[:])
+        # self._masks = {}
 
         self.backend = backend
         self.numpy_lib = numpy_lib
@@ -686,13 +854,14 @@ class LumiMask(object):
             self._masks[int(run)] = mask
 
     def __call__(self, runs, lumis):
-        mask_out = self.numpy_lib.zeros(dtype='bool', shape=runs.shape)
+        mask_out = self.numpy_lib.zeros(dtype="bool", shape=runs.shape)
         LumiMask.apply_run_lumi_mask(self._masks, runs, lumis, mask_out, self.backend)
         return mask_out
 
     @staticmethod
     def apply_run_lumi_mask(masks, runs, lumis, mask_out, backend):
         backend.apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out)
+
 
 class LumiData(object):
     """
@@ -702,21 +871,28 @@ class LumiData(object):
                 -b "STABLE BEAMS" --normtag=/cvmfs/cms-bril.cern.ch/cms-lumi-pog/Normtags/normtag_PHYSICS.json \
                 -u /pb --byls --output-style csv -i Cert_294927-306462_13TeV_PromptReco_Collisions17_JSON.txt > lumi2017.csv
     """
+
     def __init__(self, lumi_csv):
-        self._lumidata = np.loadtxt(lumi_csv, delimiter=',', usecols=(0,1,6,7), converters={
-            0: lambda s: s.split(b':')[0],
-            1: lambda s: s.split(b':')[0], # not sure what lumi:0 means, appears to be always zero (DAQ off before beam dump?)
-        })
-        self.index = Dict.empty(
-            key_type = types.Tuple([types.uint32, types.uint32]),
-            value_type = types.float64
+        self._lumidata = np.loadtxt(
+            lumi_csv,
+            delimiter=",",
+            usecols=(0, 1, 6, 7),
+            converters={
+                0: lambda s: s.split(b":")[0],
+                1: lambda s: s.split(b":")[
+                    0
+                ],  # not sure what lumi:0 means, appears to be always zero (DAQ off before beam dump?)
+            },
         )
-        #self.index = {}
+        self.index = Dict.empty(
+            key_type=types.Tuple([types.uint32, types.uint32]), value_type=types.float64
+        )
+        # self.index = {}
         self.build_lumi_table()
-    
+
     def build_lumi_table(self):
-        runs = self._lumidata[:, 0].astype('u4')
-        lumis = self._lumidata[:, 1].astype('u4')
+        runs = self._lumidata[:, 0].astype("u4")
+        lumis = self._lumidata[:, 1].astype("u4")
         LumiData.build_lumi_table_kernel(runs, lumis, self._lumidata, self.index)
 
     @staticmethod
@@ -726,16 +902,16 @@ class LumiData(object):
             run = runs[i]
             lumi = lumis[i]
             index[(run, lumi)] = float(lumidata[i, 2])
-            
+
     def get_lumi(self, runslumis):
         """
             Return integrated lumi
             runlumis: 2d numpy array of [[run,lumi], [run,lumi], ...] or LumiList object
         """
-        tot_lumi = np.zeros((1, ), dtype=np.float64)
+        tot_lumi = np.zeros((1,), dtype=np.float64)
         LumiData.get_lumi_kernel(runslumis[:, 0], runslumis[:, 1], self.index, tot_lumi)
         return tot_lumi[0]
-    
+
     @staticmethod
     @numba.njit(parallel=False, fastmath=False)
     def get_lumi_kernel(runs, lumis, index, tot_lumi):

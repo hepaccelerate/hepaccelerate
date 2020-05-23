@@ -1,6 +1,7 @@
 """This file contains the public-facing API of the kernels
 """
 
+
 def spherical_to_cartesian(backend, pt, eta, phi, mass):
     """Converts an array of spherical four-momentum coordinates (pt, eta, phi, mass) to cartesian (px, py ,pz, E).
     
@@ -15,6 +16,7 @@ def spherical_to_cartesian(backend, pt, eta, phi, mass):
         tuple of arrays: returns the numpy or cupy arrays (px, py, pz, E) 
     """
     return backend.spherical_to_cartesian(pt, eta, phi, mass)
+
 
 def cartesian_to_spherical(backend, px, py, pz, e):
     """Converts an array of cartesian four-momentum coordinates (px, py ,pz, E) to spherical (pt, eta, phi, mass).
@@ -31,6 +33,7 @@ def cartesian_to_spherical(backend, px, py, pz, e):
     """
     return backend.cartesian_to_spherical(px, py, pz, e)
 
+
 def searchsorted(backend, arr, vals, side="right"):
     """Finds where to insert the values in 'vals' into a sorted array 'arr' to preserve order, as np.searchsorted.
     
@@ -44,6 +47,7 @@ def searchsorted(backend, arr, vals, side="right"):
         array of ints: Indices into 'arr' where the values would be inserted 
     """
     return backend.searchsorted(arr, vals, side=side)
+
 
 def broadcast(backend, offsets, content, out):
     """Given the offsets from a one-dimensional jagged array, broadcasts a per-event array to a per-object array.
@@ -64,7 +68,10 @@ def broadcast(backend, offsets, content, out):
     """
     backend.broadcast(offsets, content, out)
 
-def sum_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None, dtype=None):
+
+def sum_in_offsets(
+    backend, offsets, content, mask_rows=None, mask_content=None, dtype=None
+):
     """Sums the values in a depth-1 jagged array within the offsets, e.g. to compute a per-event sum
     
     >>> j = awkward.fromiter([[1.0, 2.0],[3.0, 4.0, 5.0], [6.0, 7.0], [8.0]])
@@ -84,9 +91,14 @@ def sum_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None,
     Returns:
         array: Totals within the offsets
     """
-    return backend.sum_in_offsets(offsets, content, mask_rows=mask_rows, mask_content=mask_content, dtype=dtype)
+    return backend.sum_in_offsets(
+        offsets, content, mask_rows=mask_rows, mask_content=mask_content, dtype=dtype
+    )
 
-def prod_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None, dtype=None):
+
+def prod_in_offsets(
+    backend, offsets, content, mask_rows=None, mask_content=None, dtype=None
+):
     """Summary
 
     >>> j = awkward.fromiter([[1.0, 2.0],[3.0, 4.0, 5.0], [6.0, 7.0], [8.0]])
@@ -106,7 +118,10 @@ def prod_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None
     Returns:
         TYPE: Description
     """
-    return backend.prod_in_offsets(offsets, content, mask_rows, mask_content, dtype=dtype)
+    return backend.prod_in_offsets(
+        offsets, content, mask_rows, mask_content, dtype=dtype
+    )
+
 
 def max_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None):
     """Summary
@@ -127,7 +142,10 @@ def max_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None)
     Returns:
         TYPE: Description
     """
-    return backend.max_in_offsets(offsets, content, mask_rows=mask_rows, mask_content=mask_content)
+    return backend.max_in_offsets(
+        offsets, content, mask_rows=mask_rows, mask_content=mask_content
+    )
+
 
 def min_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None):
     """Summary
@@ -148,7 +166,10 @@ def min_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None)
     Returns:
         TYPE: Description
     """
-    return backend.min_in_offsets(offsets, content, mask_rows=mask_rows, mask_content=mask_content)
+    return backend.min_in_offsets(
+        offsets, content, mask_rows=mask_rows, mask_content=mask_content
+    )
+
 
 def select_opposite_sign(backend, offsets, charges, in_mask):
     """Summary
@@ -164,7 +185,10 @@ def select_opposite_sign(backend, offsets, charges, in_mask):
     """
     return backend.select_opposite_sign(offsets, charges, in_mask)
 
-def get_in_offsets(backend, offsets, content, indices, mask_rows=None, mask_content=None):
+
+def get_in_offsets(
+    backend, offsets, content, indices, mask_rows=None, mask_content=None
+):
     """Retrieves the per-event values corresponding to indices in the content array.
 
     >>> j = awkward.fromiter([[1.0, 2.0],[3.0, 4.0, 5.0], [6.0, 7.0], [8.0]])
@@ -186,9 +210,14 @@ def get_in_offsets(backend, offsets, content, indices, mask_rows=None, mask_cont
     Returns:
         TYPE: Description
     """
-    return backend.get_in_offsets(offsets, content, indices, mask_rows=mask_rows, mask_content=mask_content) 
+    return backend.get_in_offsets(
+        offsets, content, indices, mask_rows=mask_rows, mask_content=mask_content
+    )
 
-def set_in_offsets(backend, offsets, content, indices, target, mask_rows=None, mask_content=None):
+
+def set_in_offsets(
+    backend, offsets, content, indices, target, mask_rows=None, mask_content=None
+):
     """Sets the per-event values corresponding to indices in the content array to the values in the target array.
     
     >>> j = awkward.fromiter([[0.0, 0.0],[0.0, 0.0, 0.0], [0.0, 0.0], [0.0]])
@@ -209,8 +238,16 @@ def set_in_offsets(backend, offsets, content, indices, target, mask_rows=None, m
         mask_rows (None, optional): Description
         mask_content (None, optional): Description
     """
-    backend.set_in_offsets(offsets, content, indices, target, mask_rows=mask_rows, mask_content=mask_content)
- 
+    backend.set_in_offsets(
+        offsets,
+        content,
+        indices,
+        target,
+        mask_rows=mask_rows,
+        mask_content=mask_content,
+    )
+
+
 def mask_deltar_first(backend, objs1, mask1, objs2, mask2, drcut):
     """Masks objects in the first collection that are closer than drcut to
        objects in the second collection according to dR=sqrt(dEta^2 + dPhi^2) 
@@ -228,6 +265,7 @@ def mask_deltar_first(backend, objs1, mask1, objs2, mask2, drcut):
             than drcut to objects in the second collection
     """
     return backend.mask_deltar_first(objs1, mask1, objs2, mask2, drcut)
+
 
 def histogram_from_vector(backend, data, weights, bins, mask=None):
     """Fills the weighted values in a data array to a histogram specified by a sorted one-dimensional bin array.
@@ -252,7 +290,8 @@ def histogram_from_vector(backend, data, weights, bins, mask=None):
         tuple of arrays (w, w^2, bins): A tuple of weight, squared weight and bin arrays
     """
     return backend.histogram_from_vector(data, weights, bins, mask=mask)
- 
+
+
 def histogram_from_vector_several(backend, variables, weights, mask):
     """Fills several data arrays into histograms simultaneously. On a GPU, this is
         faster than calling the histogram function several times due to the overhead
@@ -275,7 +314,8 @@ def histogram_from_vector_several(backend, variables, weights, mask):
     Returns:
         List of (w, w^2, bins) tuples: A list of tuples of weight, squared weight and bin arrays for each variable
     """
-    return backend.histogram_from_vector_several(variables, weights, mask) 
+    return backend.histogram_from_vector_several(variables, weights, mask)
+
 
 def get_bin_contents(backend, values, edges, contents, out):
     """Does a lookup on the values given a set of sorted edges and contents forming a histogram.
@@ -294,7 +334,8 @@ def get_bin_contents(backend, values, edges, contents, out):
         contents (TYPE): Description
         out (TYPE): Description
     """
-    backend.get_bin_contents(values, edges, contents, out) 
+    backend.get_bin_contents(values, edges, contents, out)
+
 
 def copyto_dst_indices(backend, dst, src, inds_dst):
     """Copies the values from the src array to the specified indices in the dst array
@@ -311,7 +352,8 @@ def copyto_dst_indices(backend, dst, src, inds_dst):
         src (TYPE): Description
         inds_dst (TYPE): Description
     """
-    backend.copyto_dst_indices(dst, src, inds_dst) 
+    backend.copyto_dst_indices(dst, src, inds_dst)
+
 
 def compute_new_offsets(backend, offsets_old, mask_objects, offsets_new):
     """Masks elements in a jagged array, creating a new offset array
@@ -333,8 +375,10 @@ def compute_new_offsets(backend, offsets_old, mask_objects, offsets_new):
     """
     backend.compute_new_offsets(offsets_old, mask_objects, offsets_new)
 
+
 if __name__ == "__main__":
     import doctest
     import awkward, numpy
     import hepaccelerate.backend_cpu as backend_cpu
+
     doctest.testmod()
