@@ -109,14 +109,14 @@ def prod_in_offsets(
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets (TYPE): Description
-        content (TYPE): Description
-        mask_rows (TYPE): Description
-        mask_content (TYPE): Description
-        dtype (None, optional): Description
+        offsets (array of uint64): one dimensional offsets of the jagged array (depth 1)
+        content (array): data array to compute the product over
+        mask_rows (array of bool, optional): Mask the values in the offset array that are set to False
+        mask_content (array of bool, optional): Mask the values in the data array that are set to False
+        dtype (data type, optional): Output data type
     
     Returns:
-        TYPE: Description
+        array: Products within the offsets
     """
     return backend.prod_in_offsets(
         offsets, content, mask_rows, mask_content, dtype=dtype
@@ -134,13 +134,14 @@ def max_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None)
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets (TYPE): Description
-        content (TYPE): Description
-        mask_rows (None, optional): Description
-        mask_content (None, optional): Description
+        offsets (array of uint64): one dimensional offsets of the jagged array (depth 1)
+        content (array): data array to compute the max over
+        mask_rows (array of bool, optional): Mask the values in the offset array that are set to False
+        mask_content (array of bool, optional): Mask the values in the data array that are set to False
+        dtype (data type, optional): Output data type
     
     Returns:
-        TYPE: Description
+        array: max values within the offsets
     """
     return backend.max_in_offsets(
         offsets, content, mask_rows=mask_rows, mask_content=mask_content
@@ -158,13 +159,14 @@ def min_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None)
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets (TYPE): Description
-        content (TYPE): Description
-        mask_rows (None, optional): Description
-        mask_content (None, optional): Description
+        offsets (array of uint64): one dimensional offsets of the jagged array (depth 1)
+        content (array): data array to compute the max over
+        mask_rows (array of bool, optional): Mask the values in the offset array that are set to False
+        mask_content (array of bool, optional): Mask the values in the data array that are set to False
+        dtype (data type, optional): Output data type
     
     Returns:
-        TYPE: Description
+        array: min values within the offsets
     """
     return backend.min_in_offsets(
         offsets, content, mask_rows=mask_rows, mask_content=mask_content
@@ -201,14 +203,14 @@ def get_in_offsets(
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets (TYPE): Description
-        content (TYPE): Description
-        indices (TYPE): Description
-        mask_rows (None, optional): Description
-        mask_content (None, optional): Description
+        offsets (array of uint64): one dimensional offsets of the jagged array (depth 1)
+        content (array): data array from where the values are retrieved
+        indices (array of ints): Index values to retrieve within the offsets
+        mask_rows (array of bool, optional): Mask the values in the offset array that are set to False
+        mask_content (array of bool, optional): Mask the values in the data array that are set to False
     
     Returns:
-        TYPE: Description
+        array: values in events
     """
     return backend.get_in_offsets(
         offsets, content, indices, mask_rows=mask_rows, mask_content=mask_content
@@ -231,12 +233,12 @@ def set_in_offsets(
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets (TYPE): Description
-        content (TYPE): Description
-        indices (TYPE): Description
-        target (TYPE): Description
-        mask_rows (None, optional): Description
-        mask_content (None, optional): Description
+        offsets (array of uint64): one dimensional offsets of the jagged array (depth 1)
+        content (array): data array from where the values are retrieved
+        indices (array of ints): Index values to set within the offsets
+        target (array): Values to set within the offsets
+        mask_rows (array of bool, optional): Mask the values in the offset array that are set to False
+        mask_content (array of bool, optional): Mask the values in the data array that are set to False
     """
     backend.set_in_offsets(
         offsets,
@@ -256,7 +258,7 @@ def mask_deltar_first(backend, objs1, mask1, objs2, mask2, drcut):
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
         objs1 (dict): a dictionary containing the "eta" and "phi" arrays for the first collection
         mask1 (array of bool): Mask of objects in the first collection that are not used for the matching
-        objs2 (TYPE): a dictionary containing the "eta" and "phi" arrays for the second collection
+        objs2 (dict): a dictionary containing the "eta" and "phi" arrays for the second collection
         mask2 (array of bool): Mask of objects in the second collection that are not used for the matching
         drcut (float): Minimum delta R value between objects
     
@@ -318,7 +320,7 @@ def histogram_from_vector_several(backend, variables, weights, mask):
 
 
 def get_bin_contents(backend, values, edges, contents, out):
-    """Does a lookup on the values given a set of sorted edges and contents forming a histogram.
+    """Does a lookup on the values given a set of sorted edges and contents that form a 1D histogram.
 
     >>> values = numpy.array([1,1,2,3])
     >>> edges = numpy.array([1,2,3,4,5])
@@ -329,10 +331,10 @@ def get_bin_contents(backend, values, edges, contents, out):
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        values (TYPE): Description
-        edges (TYPE): Description
-        contents (TYPE): Description
-        out (TYPE): Description
+        values (array): The values to look up in the histogram
+        edges (array): The histogram edges
+        contents (array): The histogram contents
+        out (array): The histogram contents at values
     """
     backend.get_bin_contents(values, edges, contents, out)
 
@@ -348,9 +350,9 @@ def copyto_dst_indices(backend, dst, src, inds_dst):
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        dst (TYPE): Description
-        src (TYPE): Description
-        inds_dst (TYPE): Description
+        dst (array): The destination array
+        src (array): The The indices in the destination array into which the source array elements are copied
+        inds_dst (array): Description
     """
     backend.copyto_dst_indices(dst, src, inds_dst)
 
@@ -369,9 +371,9 @@ def compute_new_offsets(backend, offsets_old, mask_objects, offsets_new):
 
     Args:
         backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets_old (TYPE): Description
-        mask_objects (TYPE): Description
-        offsets_new (TYPE): Description
+        offsets_old (array of uint64): The old offset array
+        mask_objects (array): The elements to mask
+        offsets_new (array): The new offset array, taking into account the masked elements
     """
     backend.compute_new_offsets(offsets_old, mask_objects, offsets_new)
 
