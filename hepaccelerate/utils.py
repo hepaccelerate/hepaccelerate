@@ -566,8 +566,8 @@ class Dataset(BaseDataset):
             data = {}
             for structname in self.names_structs:
                 data[structname] = self.structs[structname][ifile].copy()
-            data["num_events"] = self.structs[structname][ifile].numevents()
-            data["eventvars"] = {k: v.copy() for k, v in self.eventvars[ifile].items()}
+            data["num_events"] = self.numevents()
+            data["EventVariables"] = {k: v.copy() for k, v in self.eventvars[ifile].items()}
             ret = analyze_data(data, **kwargs)
             rets += [ret]
         t1 = time.time()
@@ -591,16 +591,7 @@ class Dataset(BaseDataset):
         return n_objects
    
     def numevents(self):
-        structname = list(self.structs.keys())[0]
-        return self.num_events_loaded(structname)
-
-    def num_events_loaded(self, structname):
-        if len(self.structs[structname]) == 0:
-            raise Exception("Dataset not yet loaded from ROOT file, call dataset.load_root() or dataset.from_cache()")
-        n_events = 0
-        for ifn in range(self.numfiles):
-            n_events += self.structs[structname][ifn].numevents()
-        return n_events
+        return len(self)
 
     def map(self, func):
         rets = []
@@ -619,13 +610,8 @@ class Dataset(BaseDataset):
                 self.eventvars[ifile][evvar] = self.eventvars[ifile][evvar][masks[ifile]]
 
     def __len__(self):
-        n_events_raw = self.num_events_raw()
-        n_events_loaded = {k: self.num_events_loaded(k) for k in self.names_structs}
-        kfirst = self.names_structs[0]
-        if n_events_raw == 0:
-            return n_events_loaded[kfirst]
-        else:
-            return n_events_raw
+        return self.num_events_raw()
+
 
 ###
 ### back-ported from https://github.com/CoffeaTeam/coffea
