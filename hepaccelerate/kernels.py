@@ -150,20 +150,6 @@ def min_in_offsets(backend, offsets, content, mask_rows=None, mask_content=None)
     """
     return backend.min_in_offsets(offsets, content, mask_rows=mask_rows, mask_content=mask_content)
 
-def select_opposite_sign(backend, offsets, charges, in_mask):
-    """Summary
-    
-    Args:
-        backend (library): either hepaccelerate.backend_cpu or hepaccelerate.backend_cuda
-        offsets (TYPE): Description
-        charges (TYPE): Description
-        in_mask (TYPE): Description
-    
-    Returns:
-        TYPE: Description
-    """
-    return backend.select_opposite_sign(offsets, charges, in_mask)
-
 def get_in_offsets(backend, offsets, content, indices, mask_rows=None, mask_content=None):
     """Retrieves the per-event values corresponding to indices in the content array.
 

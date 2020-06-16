@@ -241,36 +241,6 @@ def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
                 cuda.atomic.add(out_w, bin_idx_histo, wi)
                 cuda.atomic.add(out_w2, bin_idx_histo, wi**2)
 
-@cuda.jit
-def select_opposite_sign_cudakernel(charges_offsets, charges_content, content_mask_in, content_mask_out):
-    xi = cuda.grid(1)
-    xstride = cuda.gridsize(1)
-    
-    for iev in range(xi, charges_offsets.shape[0]-1, xstride):
-        start = np.uint64(charges_offsets[iev])
-        end = np.uint64(charges_offsets[iev + 1])
-        
-        ch1 = np.int32(0)
-        idx1 = np.uint64(0)
-        ch2 = np.int32(0)
-        idx2 = np.uint64(0)
-        
-        for imuon in range(start, end):
-            if not content_mask_in[imuon]:
-                continue
-                
-            if idx1 == 0 and idx2 == 0:
-                ch1 = charges_content[imuon]
-                idx1 = imuon
-                continue
-            else:
-                ch2 = charges_content[imuon]
-                if (ch2 != ch1):
-                    idx2 = imuon
-                    content_mask_out[idx1] = 1
-                    content_mask_out[idx2] = 1
-                    break
-    return
 
 @cuda.jit
 def sum_in_offsets_cudakernel(offsets, content, mask_rows, mask_content, out):

@@ -179,42 +179,6 @@ def fill_histogram_masked(data, weights, bins, mask, out_w, out_w2):
             out_w2[bin_idx] += np.float32(wi**2)
 
 @numba.njit(parallel=True, fastmath=True)
-def select_opposite_sign_kernel(charges_content, charges_offsets, content_mask_in, content_mask_out):
-    assert(len(charges_content) == len(content_mask_in))
-    assert(len(charges_content) == len(content_mask_out))
-
-    for iev in numba.prange(charges_offsets.shape[0]-1):
-        start = np.uint64(charges_offsets[iev])
-        end = np.uint64(charges_offsets[iev + 1])
-        
-        ch1 = np.float32(0.0)
-        idx1 = np.uint64(0)
-        ch2 = np.float32(0.0)
-        idx2 = np.uint64(0)
-        
-        #loop over objects (e.g. muons)
-        for iobj in range(start, end):
-            #only consider muons that pass
-            if not content_mask_in[iobj]:
-                continue
-            
-            #First object in event
-            if idx1 == 0 and idx2 == 0:
-                ch1 = charges_content[iobj]
-                idx1 = iobj
-                continue
-
-            #Rest of the objects
-            else:
-                ch2 = charges_content[iobj]
-                if (ch2 != ch1):
-                    idx2 = iobj
-                    content_mask_out[idx1] = True
-                    content_mask_out[idx2] = True
-                    break
-    return
-
-@numba.njit(parallel=True, fastmath=True)
 def sum_in_offsets_kernel(offsets, content, mask_rows, mask_content, out):
     assert(len(content) == len(mask_content))
     assert(len(offsets) - 1 == len(mask_rows))
