@@ -290,17 +290,6 @@ class TestKernels(unittest.TestCase):
         self.assertEqual(muons_matched_to_jet.sum(), 1698542)
         return muons.numevents()
         
-    def test_kernel_select_opposite_sign(self):
-        print("kernel_select_opposite_sign")
-        dataset = self.dataset
-        muons = dataset.structs["Muon"][0]
-        sel_ev = self.NUMPY_LIB.ones(muons.numevents(), dtype=self.NUMPY_LIB.bool)
-        sel_mu = self.NUMPY_LIB.ones(muons.numobjects(), dtype=self.NUMPY_LIB.bool)
-        muons_passing_os = kernels.select_opposite_sign(
-            self.ha,
-            muons.offsets, muons.charge, sel_mu)
-        return muons.numevents()
-    
     def test_kernel_histogram_from_vector(self):
         print("kernel_histogram_from_vector")
         dataset = self.dataset
