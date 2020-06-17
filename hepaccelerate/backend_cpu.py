@@ -415,13 +415,19 @@ def get_bin_contents_kernel(values, edges, contents, out):
 @numba.njit(parallel=True, fastmath=True)
 def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
     for iev in numba.prange(len(runs)):
+        #get the run and lumi for the current event
         run = runs[iev]
         lumi = lumis[iev]
 
         if run in masks:
+            #get the ordered list of lumi boundaries [start_1, stop_1, start_2, stop_2, ...]
             lumimask = masks[run]
-            ind = searchsorted_devfunc_right(lumimask, lumi)
+            #find where the lumisection of the current event falls in the array
+            ind = searchsorted_devfunc_left(lumimask, lumi)
+            
+            #if the index is odd, it falls between [start_1, stop_1], otherwise, it falls between [stop_1, start_2]
             if np.mod(ind, 2) == 1:
+                #enable this event in the output mask if lumi in [start_1, stop_1]
                 mask_out[iev] = 1
 
 

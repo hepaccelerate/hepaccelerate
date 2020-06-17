@@ -9,8 +9,9 @@ import numba
 import uproot
 
 import hepaccelerate
+import hepaccelerate.backend_cpu as backend_cpu
 import hepaccelerate.kernels as kernels
-from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend
+from hepaccelerate.utils import Results, Dataset, Histogram, choose_backend, LumiMask
 
 USE_CUDA = int(os.environ.get("HEPACCELERATE_CUDA", 0)) == 1
 
@@ -444,7 +445,17 @@ class TestKernels(unittest.TestCase):
             self.assertAlmostEqual(eta_tot, 0.13980652560764573)
             self.assertAlmostEqual(phi_tot, 0.2747346427265487)
             self.assertAlmostEqual(mass_tot, 126.24366428840153)
-
+    
+    def test_lumi_mask(self):
+        lumimask = LumiMask("tests/samples/Cert_271036-284044_13TeV_ReReco_07Aug2017_Collisions16_JSON.txt", np, backend_cpu)
+        runs = np.array([279931, 279931, 279931], dtype=self.NUMPY_LIB.uint32)
+        lumis = np.array([1, 83, 743], dtype=self.NUMPY_LIB.uint32)
+        mask = lumimask(runs, lumis)
+        #"279931": [[84, 628], [630, 743], [746, 801], [803, 1043], [1045, 3022]]
+        #[  83  628  629  743  745  801  802 1043 1044 3022]
+        self.assertFalse(mask[0])
+        self.assertFalse(mask[1])
+        self.assertTrue(mask[2])
 
 if __name__ == "__main__":
     if "--debug" in sys.argv:
