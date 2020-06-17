@@ -411,9 +411,18 @@ def get_bin_contents_kernel(values, edges, contents, out):
         if ibin >= 0 and ibin < len(contents):
             out[i] = contents[ibin]
 
+"""
+Evaluates which events in a given set pass the supplied lumi mask.
 
+    masks: a dictionary with run->lumilist, where lumilist is a sorted ascending array of [start, stop, start, stop] lumisections
+    runs: the run numbers for the input events
+    lumis: the luminosity sections for the input events
+    mask_out: per-event output array, where the mask is set to 1 in case an event is in the lumimask
+"""
 @numba.njit(parallel=True, fastmath=True)
-def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
+def apply_run_lumi_mask_kernel(masks: numba.typed.typeddict.Dict, runs: np.array, lumis: np.array, mask_out: np.array):
+    assert(len(runs) == len(lumis))
+    assert(len(runs) == len(mask_out))
     for iev in numba.prange(len(runs)):
         #get the run and lumi for the current event
         run = runs[iev]
