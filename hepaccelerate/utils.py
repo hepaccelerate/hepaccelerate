@@ -842,7 +842,6 @@ class LumiMask(object):
         with open(jsonfile) as fin:
             goldenjson = json.load(fin)
         self._masks = Dict.empty(key_type=types.int64, value_type=types.int64[:])
-        # self._masks = {}
 
         self.backend = backend
         self.numpy_lib = numpy_lib

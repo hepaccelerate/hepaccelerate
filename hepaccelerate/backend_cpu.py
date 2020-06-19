@@ -411,17 +411,32 @@ def get_bin_contents_kernel(values, edges, contents, out):
         if ibin >= 0 and ibin < len(contents):
             out[i] = contents[ibin]
 
+"""
+Evaluates which events in a given set pass the supplied lumi mask.
 
+    masks: a dictionary with run->lumilist, where lumilist is a sorted ascending array of [start, stop, start, stop] lumisections
+    runs: the run numbers for the input events
+    lumis: the luminosity sections for the input events
+    mask_out: per-event output array, where the mask is set to 1 in case an event is in the lumimask
+"""
 @numba.njit(parallel=True, fastmath=True)
-def apply_run_lumi_mask_kernel(masks, runs, lumis, mask_out):
+def apply_run_lumi_mask_kernel(masks: numba.typed.typeddict.Dict, runs: np.array, lumis: np.array, mask_out: np.array):
+    assert(len(runs) == len(lumis))
+    assert(len(runs) == len(mask_out))
     for iev in numba.prange(len(runs)):
+        #get the run and lumi for the current event
         run = runs[iev]
         lumi = lumis[iev]
 
         if run in masks:
+            #get the ordered list of lumi boundaries [start_1, stop_1, start_2, stop_2, ...]
             lumimask = masks[run]
-            ind = searchsorted_devfunc_right(lumimask, lumi)
+            #find where the lumisection of the current event falls in the array
+            ind = searchsorted_devfunc_left(lumimask, lumi)
+            
+            #if the index is odd, it falls between [start_1, stop_1], otherwise, it falls between [stop_1, start_2]
             if np.mod(ind, 2) == 1:
+                #enable this event in the output mask if lumi in [start_1, stop_1]
                 mask_out[iev] = 1
 
 
