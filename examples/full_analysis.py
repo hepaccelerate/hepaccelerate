@@ -1020,23 +1020,23 @@ parameters = {
 }
 
 datasets = [
-    ("DYJetsToLL", "/opendata_files/DYJetsToLL-merged/*.root", True),
+    ("DYJetsToLL", "/DYJetsToLL-merged/*.root", True),
     (
         "TTJets_FullLeptMGDecays",
-        "/opendata_files/TTJets_FullLeptMGDecays-merged/*.root",
+        "/TTJets_FullLeptMGDecays-merged/*.root",
         True,
     ),
-    ("TTJets_Hadronic", "/opendata_files/TTJets_Hadronic-merged/*.root", True),
+    ("TTJets_Hadronic", "/TTJets_Hadronic-merged/*.root", True),
     (
         "TTJets_SemiLeptMGDecays",
-        "/opendata_files/TTJets_SemiLeptMGDecays-merged/*.root",
+        "/TTJets_SemiLeptMGDecays-merged/*.root",
         True,
     ),
-    ("W1JetsToLNu", "/opendata_files/W1JetsToLNu-merged/*.root", True),
-    ("W2JetsToLNu", "/opendata_files/W2JetsToLNu-merged/*.root", True),
-    ("W3JetsToLNu", "/opendata_files/W3JetsToLNu-merged/*.root", True),
-    ("GluGluToHToMM", "/opendata_files/GluGluToHToMM-merged/*.root", True),
-    ("SingleMu", "/opendata_files/SingleMu-merged/*.root", False),
+    ("W1JetsToLNu", "/W1JetsToLNu-merged/*.root", True),
+    ("W2JetsToLNu", "/W2JetsToLNu-merged/*.root", True),
+    ("W3JetsToLNu", "/W3JetsToLNu-merged/*.root", True),
+    ("GluGluToHToMM", "/GluGluToHToMM-merged/*.root", True),
+    ("SingleMu", "/SingleMu-merged/*.root", False),
 ]
 
 if __name__ == "__main__":
