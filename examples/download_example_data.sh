@@ -7,6 +7,7 @@ then
 fi
 
 TARGET_DIR=$1
+mkdir -p $TARGET_DIR
 echo "Going to download 144GB of data to $TARGET_DIR"
 
 for fn in `cat examples/data.txt`; do
